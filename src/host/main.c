@@ -38,6 +38,8 @@ void script_start(void);
 #define HKLM 0x80000002u
 
 static int g_headless;
+static int g_windowed;                   /* --windowed: not full screen at launch (F11 toggles) */
+static int g_free_mouse;                 /* --free-mouse: the pointer may leave the picture */
 static unsigned g_watchdog_s;
 static const char *g_resolution;         /* --resolution WxH | options */
 static const char *g_shot;               /* --shot FILE: the screen, as a BMP */
@@ -239,6 +241,8 @@ int main(int argc, char **argv) {
         if (n) { i += n - 1; continue; }
         if (!strcmp(argv[i], "--run")) run = 1;
         else if (!strcmp(argv[i], "--headless")) g_headless = 1;
+        else if (!strcmp(argv[i], "--windowed")) g_windowed = 1;
+        else if (!strcmp(argv[i], "--free-mouse")) g_free_mouse = 1;
         else if (!strcmp(argv[i], "--game") && i + 1 < argc) game = argv[++i];
         else if (!strcmp(argv[i], "--mute")) hle_dsound_set_master(0.0f);
         else if (!strcmp(argv[i], "--watchdog") && i + 1 < argc) g_watchdog_s = (unsigned)strtoul(argv[++i], NULL, 0);
@@ -254,7 +258,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--shot-after") && i + 1 < argc) g_shot_s = (unsigned)strtoul(argv[++i], NULL, 0);
         else if (!strcmp(argv[i], "--shot-every") && i + 1 < argc) g_shot_every = (unsigned)strtoul(argv[++i], NULL, 0);
         else {
-            printf("usage: tpw [--run] [--headless] [--resolution WxH|options] [--game DIR] [--mute] [--watchdog S] [--trace] [--shot FILE.bmp] [--shot-after S] [--shot-every S]\n"
+            printf("usage: tpw [--run] [--headless] [--windowed] [--free-mouse] [--resolution WxH|options] [--game DIR] [--mute] [--watchdog S] [--trace] [--shot FILE.bmp] [--shot-after S] [--shot-every S]\n"
                    "           [--move x,y@s] [--click x,y@s] [--rclick x,y@s] [--key vk@s]\n");
             return !strcmp(argv[i], "--help") || !strcmp(argv[i], "-h") ? 0 : 1;
         }
@@ -313,7 +317,10 @@ int main(int argc, char **argv) {
     }
     if (g_resolution && set_resolution(game_full, g_resolution) != 0) return 1;
     if (chdir(game_full) != 0) { fprintf(stderr, "cannot enter %s\n", game_full); return 1; }
-    if (hle_screen_open(TPW_TITLE, 0, g_headless) != 0) return 1;
+    /* Full screen in its own Space, as a 1999 game ran: the game draws its own
+     * cursor, and the mouse is held in the picture either way (Ctrl+Cmd lets go). */
+    hle_screen_confine(!g_free_mouse);
+    if (hle_screen_open(TPW_TITLE, !g_windowed, g_headless) != 0) return 1;
 #ifdef RECOMP_TRACE
     tpw_trace_start();
     hle_on_exit = on_exit_trace;
