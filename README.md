@@ -13,9 +13,8 @@ sound effects, drawn through DirectX 6's Direct3D at up to 2048x1536 and
 played with the mouse and keyboard. See [docs/bringup.md](docs/bringup.md)
 and [docs/RECON.md](docs/RECON.md).
 
-It needs pcrecomp's `main` (DirectX 6) and, until they are merged, its
-`win32hle-dinput` (DirectInput) and `win32hle-gdi-lfwidth` (squeezed fonts)
-branches.
+It needs pcrecomp's `main` (DirectX 6) plus two win32hle changes that are
+still awaiting review upstream; see [pcrecomp: pending merges](#pcrecomp-pending-merges).
 
 ## What you need
 
@@ -38,6 +37,33 @@ You supply:
    disc's files with the patch's own RTPatch applier, run headlessly, so
    there is no Windows installer to run. Its data cannot be shipped here.
 
+## pcrecomp: pending merges
+
+Some of what this game needs from win32hle is in open pull requests on
+[sp00nznet/pcrecomp](https://github.com/sp00nznet/pcrecomp). Until they are
+merged, pcrecomp's `main` alone builds a game that won't get past a park's
+loading screen or respond to the mouse.
+
+| PR | Branch | What it adds | Needed? |
+|----|--------|--------------|---------|
+| [#159](https://github.com/sp00nznet/pcrecomp/pull/159) | `win32hle-dinput` | DirectInput 3/5: the system mouse and keyboard | **Yes.** Without it the game's cursor never moves, so no menu can be used. |
+| [#160](https://github.com/sp00nznet/pcrecomp/pull/160) | `win32hle-gdi-lfwidth` | A font's `lfWidth` squeezes or stretches its text | **Yes.** Without it the ride-sign fitting loop never ends and a park never loads. |
+| [#158](https://github.com/sp00nznet/pcrecomp/pull/158) | `win32hle-dx6-followups` | DirectDraw 4 review follow-ups (resized textures, attached z-buffers, uniqueness values) | No. Correctness fixes from #154's review; TPW runs without them. |
+
+To build against them, merge the needed branches into a local branch of
+your pcrecomp clone. They merge cleanly into `main` and with each other:
+
+```
+cd ../pcrecomp
+git remote add cpressland https://github.com/cpressland/pcrecomp
+git fetch origin && git fetch cpressland
+git switch -c tpw-local origin/main
+git merge --no-edit cpressland/win32hle-dinput cpressland/win32hle-gdi-lfwidth
+```
+
+When a PR is merged, drop its branch from that list (and from this table);
+once all are, build against plain `main`.
+
 ## Building (macOS)
 
 Prerequisites: Xcode's command line tools, Python 3.10+, and Homebrew's
@@ -49,6 +75,8 @@ some-folder/
   pcrecomp/      <- git clone https://github.com/sp00nznet/pcrecomp
   tpw-recomp/    <- this repository
 ```
+
+with the pending branches merged in, as above.
 
 1. Python packages:
    ```
