@@ -110,11 +110,36 @@ one are at the end.
 17. **Screenshots tearing**: `--shot` copied the primary from its own thread
     while the game flipped; it now copies holding the machine.
 
-Now: the intro, the front end and its menus run through Direct3D at up to
-2048x1536, with the mouse and keyboard. Loading into a park stalls on its
-"Welcome to Theme Park World" screen: the game reopens the welcome speech
-every frame (`QSWaveMixOpenWaveEx`, which the silent QMixer answers with no
-wave) and waits for it. Next: QMixer, for sound and to get past that screen.
+18. **QMixer**: `src/host/qmixer.c`, QSound's mixer answered in the host
+    (the generated failure stubs are gone). Every sound TPW plays is an
+    input stream (`OpenWaveEx` type 0x11, read from the disc's `QMixer.dll`:
+    a `WAVEFORMATEX`, a block size, a callback and its user data); the
+    callback, `(buffer, bytes, user)` -> more to come, waits up to 500 ms
+    for the game's own decoder thread. So each channel has a puller thread
+    (one for good: every thread that calls the game gets a guest stack, and
+    a thread per sound ran win32hle out of them) filling a ring from the
+    callback, and a mixer thread mixes the rings into win32hle's audio
+    output, 44.1 kHz stereo, about 100 ms ahead: volume, frequency, pause
+    and stop, and simple 3D (distance between the mapping's minimum and
+    maximum, left and right from the listener's orientation). The welcome
+    speech now plays, and the loading screen goes on to the player's
+    islands. `TPW_QMTRACE=1` traces it, `TPW_QMWAV=FILE` records the mix.
+19. **A sign that never fits**: loading a park, the game fits each ride's
+    sign by measuring its text, scaling the characters' advances, and
+    measuring again through Uniscribe's `piDx`, until it is small enough.
+    The Uniscribe answers ignored `piDx`, and win32hle's GDI ignored
+    `lfWidth`, with which the game asks for the sign's font (width 1:
+    squeezed): the text kept its natural 645 pixels and the loop never
+    ended. `ScriptStringAnalyse` now takes the given advances (and
+    `ScriptStringOut` places each character by them), and pcrecomp branch
+    `win32hle-gdi-lfwidth` makes `lfWidth` scale text across.
+    `TPW_SSATRACE=1` prints each measurement.
+
+Now: the game plays. A park loads (Lost Kingdom), visitors arrive, money
+and the date move, the advisor talks, with music, speech and effects, through
+Direct3D at up to 2048x1536 and with the mouse and keyboard. Not yet heard
+by a person: whether the 3D placement's left and right are the right way
+round, and how the mix sounds against the original.
 
 ## The knobs
 
@@ -131,6 +156,9 @@ wave) and waits for it. Next: QMixer, for sound and to get past that screen.
 | `HLE_D3DTRACE=1` | Direct3D's device, viewports and the interfaces asked for |
 | `HLE_D3DFPS=1` | scenes a second and triangles a scene, every five seconds |
 | `HLE_DITRACE=1` | DirectInput's devices, and every buffered read |
+| `TPW_QMTRACE=1` | QMixer: set-up, every wave opened and played |
+| `TPW_QMWAV=FILE` | the mixed audio, recorded to a WAV as it plays |
+| `TPW_SSATRACE=1` | every Uniscribe measurement, with the size it gives |
 | `HLE_MSGTRACE=1` | every window message posted |
 | `--move`, `--click`, `--rclick` `x,y@s`, `--key vk@s` | scripted input (`src/host/script.c`) |
 | `game/enginedebug.txt` | the game's own log |

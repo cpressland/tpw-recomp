@@ -55,7 +55,7 @@ static void tpw_MessageBoxA(void) {
 }
 
 extern const win32hle_shim tpw_won_shims[];     /* won_stubs.c (generated): the online libraries */
-extern const win32hle_shim tpw_qmixer_shims[];  /* qmixer_stubs.c (generated): QSound's mixer, unavailable */
+extern const win32hle_shim tpw_qmixer_shims[];  /* qmixer.c: QSound's mixer */
 extern const win32hle_shim tpw_shims[];         /* shims.c: what win32hle lacks */
 void tpw_shims_bound(uint32_t base, uint32_t span);
 

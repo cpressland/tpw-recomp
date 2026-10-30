@@ -279,7 +279,7 @@ def main():
     # from the game folder like the lift, so they live beside it, not in git.
     game = os.path.dirname(os.path.abspath(args.exe))
     gen = os.path.join(_HERE, 'tools', 'gen')
-    for tool, out in (('won_stubs.py', 'won_stubs.c'), ('qmixer_stubs.py', 'qmixer_stubs.c')):
+    for tool, out in (('won_stubs.py', 'won_stubs.c'),):
         import subprocess
         subprocess.run([sys.executable, '-I', os.path.join(gen, tool), game, os.path.join(args.out, out)],
                        check=True)

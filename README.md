@@ -6,15 +6,16 @@ and Linux after. Built on the [pcrecomp](https://github.com/sp00nznet/pcrecomp)
 toolchain and its `runtime/win32hle`, with ideas borrowed from
 [redalert2-recomp](https://github.com/sp00nznet/redalert2-recomp).
 
-**Status: bring-up.** The whole executable lifts to C with no errors and
-builds into a native Mac program that plays the intro and runs the front end
-and its menus, drawn through DirectX 6's Direct3D at up to 2048x1536, with
-the mouse and keyboard. No sound yet, and loading into a park stalls waiting
-for the welcome speech. See [docs/bringup.md](docs/bringup.md) and
-[docs/RECON.md](docs/RECON.md).
+**Status: playable, early.** The whole executable lifts to C with no errors
+and builds into a native Mac program: the intro, the menus, and a park that
+loads and runs, with visitors, money and the advisor, music, speech and
+sound effects, drawn through DirectX 6's Direct3D at up to 2048x1536 and
+played with the mouse and keyboard. See [docs/bringup.md](docs/bringup.md)
+and [docs/RECON.md](docs/RECON.md).
 
-It needs pcrecomp's `main` (DirectX 6) and, until it is merged, the
-`win32hle-dinput` branch (DirectInput).
+It needs pcrecomp's `main` (DirectX 6) and, until they are merged, its
+`win32hle-dinput` (DirectInput) and `win32hle-gdi-lfwidth` (squeezed fonts)
+branches.
 
 ## What you need
 

@@ -192,7 +192,10 @@ static void i_ImmGetProperty(void) { RET(0, 2); }
  * The game draws TrueType text by selecting a font into a DIB section's DC
  * and having Uniscribe lay out and draw each string. Text here is
  * left-to-right Latin, so the layout is GDI's: each character's advance is
- * measured with GetTextExtentPoint32A, and ScriptStringOut is TextOutA. */
+ * measured with GetTextExtentPoint32A, and ScriptStringOut is TextOutA.
+ * Given piDx, the caller's own advances are the layout instead, as
+ * Uniscribe takes them: the game scales a sign's widths to fit it, then
+ * measures again, and stops once the size is small enough. */
 #define E_FAIL 0x80004005u
 
 /* Call a registered shim as the guest would: stdcall arguments on the guest
@@ -209,6 +212,7 @@ static uint32_t call_shim(const char *name, int n, const uint32_t *args) {
 typedef struct {
     uint32_t hdc, n;
     int32_t cx, cy;                     /* the SIZE the game reads */
+    uint32_t given;                     /* the advances are the caller's (piDx) */
     char text[1];                       /* n bytes, then n advances (int32) */
 } ssa_t;
 static int32_t *ssa_widths(ssa_t *a) { return (int32_t *)(void *)(a->text + ((a->n + 4) & ~3u)); }
@@ -236,6 +240,13 @@ static void s_ScriptStringAnalyse(void) {
         a->cx = cx, a->cy = (int32_t)MEM32(sz + 4);
     }
     hle_scratch_release(mark);
+    if (A32(9)) {                                  /* piDx: the caller's advances */
+        a->cx = 0, a->given = 1;
+        for (uint32_t i = 0; i < n; i++) w[i] = (int32_t)MEM32(A32(9) + 4 * i), a->cx += w[i];
+    }
+    if (getenv("TPW_SSATRACE"))
+        fprintf(stderr, "[ssa] %u chars \"%.*s\" flags %X reqwidth %d %s-> %dx%d\n", n, (int)(n < 40 ? n : 40), a->text,
+                A32(5), (int32_t)A32(6), A32(9) ? "piDx " : "", a->cx, a->cy);
     MEM32(out) = va;
     RET(0, 13);
 }
@@ -248,8 +259,18 @@ static void s_ScriptStringOut(void) {                       /* (ssa, x, y, optio
     uint32_t va = A32(0);
     if (!va) RET(E_FAIL, 8);
     ssa_t *a = (ssa_t *)hle_ptr(va);
-    uint32_t args[5] = { a->hdc, A32(1), A32(2), va + (uint32_t)offsetof(ssa_t, text), a->n };
-    call_shim("TextOutA", 5, args);
+    uint32_t text = va + (uint32_t)offsetof(ssa_t, text);
+    if (!a->given) {
+        uint32_t args[5] = { a->hdc, A32(1), A32(2), text, a->n };
+        call_shim("TextOutA", 5, args);
+    } else {                                       /* each character at its given advance */
+        int32_t x = (int32_t)A32(1), *w = ssa_widths(a);
+        for (uint32_t i = 0; i < a->n; i++) {
+            uint32_t args[5] = { a->hdc, (uint32_t)x, A32(2), text + i, 1 };
+            call_shim("TextOutA", 5, args);
+            x += w[i];
+        }
+    }
     RET(0, 8);
 }
 static void s_ScriptString_pSize(void) {                    /* (ssa) -> const SIZE* */
