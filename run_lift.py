@@ -57,8 +57,16 @@ RUN_SEEDS = []
 # tpw_hook_<name>(void) and it runs like an import shim.
 HOOKS = {}
 
-# Remaster patches: C emitted after one instruction (va -> C). None yet.
-PATCHES = {}
+# Remaster patches: C emitted after one instruction (va -> C).
+PATCHES = {
+    # Any screen size, widescreen too: every path of the resolution switch
+    # meets here, having set the width (0x7A1968) and height (0x7A1930), and
+    # this instruction loads the width. The host may replace both
+    # (tpw_size_override, --resolution WxH).
+    0x0044A156: '{ extern void tpw_size_override(uint32_t *, uint32_t *); '
+                'uint32_t w_ = MEM32(0x7A1968), h_ = MEM32(0x7A1930); tpw_size_override(&w_, &h_); '
+                'MEM32(0x7A1968) = w_; MEM32(0x7A1930) = h_; eax = w_; }',
+}
 
 # pcrecomp's CPUID asks the host CPU, and only under MSVC; on an arm64 Mac it
 # leaves the registers as they were and the game finds no MMX ("Theme Park

@@ -20,6 +20,7 @@
 #include <limits.h>
 #include <pthread.h>
 
+#include <SDL2/SDL.h>
 #include "win32hle.h"
 #include "pe_loader.h"
 #include "host.h"
@@ -67,26 +68,65 @@ static const win32hle_shim g_tpw_shims[] = {
 };
 
 /* --resolution: the 2.0 patch's own override, data\Resolution.sam (its
- * _Resolution.sam, renamed and set): 512x384 to 2048x1536, 4:3. "options"
- * removes it, and the game's Options screen decides again. */
+ * _Resolution.sam, renamed and set): 512x384 to 2048x1536, 4:3 (and 5:4).
+ * Any other size, widescreen included, or "native" (the desktop's), takes
+ * the 2048x1536 slot, and the size the game sets is replaced as it is set
+ * (tpw_size_override, run_lift.py's patch); the file remembers it in a
+ * comment the game skips. "options" removes the file, and the game's Options
+ * screen decides again. */
 static const int g_res[][2] = { { 0, 0 }, { 512, 384 }, { 640, 480 }, { 800, 600 }, { 1024, 768 },
                                 { 1280, 1024 }, { 1600, 1200 }, { 2048, 1536 } };
+static unsigned g_size_w, g_size_h;      /* a size of our own, not the game's; 0: the game's */
+#define TPW_SIZE_TAG "#tpw-size"
+
+void tpw_size_override(uint32_t *w, uint32_t *h) {
+    static int told;
+    if (!g_size_w) return;
+    *w = g_size_w, *h = g_size_h;
+    if (!told++) fprintf(stderr, "[tpw] screen %ux%u\n", g_size_w, g_size_h);
+}
+
+static int desktop_size(int *w, int *h) {
+    SDL_DisplayMode m;
+    if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0 || SDL_GetDesktopDisplayMode(0, &m) != 0) return -1;
+    *w = m.w, *h = m.h;
+    return 0;
+}
+
 static int set_resolution(const char *game, const char *want) {
     char path[PATH_MAX + 32];
     snprintf(path, sizeof path, "%s/data/Resolution.sam", game);
     if (!strcmp(want, "options")) { remove(path); return 0; }
     int w = 0, h = 0, n = -1;
-    if (sscanf(want, "%dx%d", &w, &h) == 2)
-        for (int i = 1; i < 8; i++) if (g_res[i][0] == w && g_res[i][1] == h) n = i;
-    if (n < 0) {
-        fprintf(stderr, "--resolution: one of 512x384 640x480 800x600 1024x768 1280x1024 1600x1200 2048x1536, or options\n");
+    if (!strcmp(want, "native")) {
+        if (desktop_size(&w, &h) != 0) { fprintf(stderr, "--resolution native: no desktop size (%s)\n", SDL_GetError()); return -1; }
+    } else if (sscanf(want, "%dx%d", &w, &h) != 2) {
+        w = 0;
+    }
+    if (w < 640 || h < 480 || w > 8192 || h > 4096) {
+        fprintf(stderr, "--resolution: WxH (640x480 up to 8192x4096, any shape), native, or options\n");
         return -1;
     }
+    for (int i = 1; i < 8; i++) if (g_res[i][0] == w && g_res[i][1] == h) n = i;
     FILE *f = fopen(path, "w");
     if (!f) return -1;
-    fprintf(f, "#\n#\tTheme Park World Resolution Override, written by tpw --resolution\n#\n\nRes.RESOLUTION\t%d\n", n);
+    fprintf(f, "#\n#\tTheme Park World Resolution Override, written by tpw --resolution\n#\n");
+    if (n < 0) fprintf(f, TPW_SIZE_TAG " %dx%d\n", w, h), n = 7;
+    fprintf(f, "\nRes.RESOLUTION\t%d\n", n);
     fclose(f);
     return 0;
+}
+
+/* The size a run uses: a size of our own, if the override names one. */
+static void read_resolution(const char *game) {
+    char path[PATH_MAX + 32], line[128];
+    unsigned w, h;
+    snprintf(path, sizeof path, "%s/data/Resolution.sam", game);
+    FILE *f = fopen(path, "r");
+    if (!f) return;
+    while (fgets(line, sizeof line, f))
+        if (sscanf(line, TPW_SIZE_TAG " %ux%u", &w, &h) == 2) g_size_w = w, g_size_h = h;
+    fclose(f);
 }
 
 /* What the installer and the 2.0 patch leave in the registry (the no-CD
@@ -258,7 +298,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--shot-after") && i + 1 < argc) g_shot_s = (unsigned)strtoul(argv[++i], NULL, 0);
         else if (!strcmp(argv[i], "--shot-every") && i + 1 < argc) g_shot_every = (unsigned)strtoul(argv[++i], NULL, 0);
         else {
-            printf("usage: tpw [--run] [--headless] [--windowed] [--free-mouse] [--resolution WxH|options] [--game DIR] [--mute] [--watchdog S] [--trace] [--shot FILE.bmp] [--shot-after S] [--shot-every S]\n"
+            printf("usage: tpw [--run] [--headless] [--windowed] [--free-mouse] [--resolution WxH|native|options] [--game DIR] [--mute] [--watchdog S] [--trace] [--shot FILE.bmp] [--shot-after S] [--shot-every S]\n"
                    "           [--move x,y@s] [--click x,y@s] [--rclick x,y@s] [--key vk@s]\n");
             return !strcmp(argv[i], "--help") || !strcmp(argv[i], "-h") ? 0 : 1;
         }
@@ -316,6 +356,7 @@ int main(int argc, char **argv) {
         return 0;
     }
     if (g_resolution && set_resolution(game_full, g_resolution) != 0) return 1;
+    read_resolution(game_full);
     if (chdir(game_full) != 0) { fprintf(stderr, "cannot enter %s\n", game_full); return 1; }
     /* Full screen in its own Space, as a 1999 game ran: the game draws its own
      * cursor, and the mouse is held in the picture either way (Ctrl+Cmd lets go). */

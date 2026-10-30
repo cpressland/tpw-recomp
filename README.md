@@ -116,8 +116,15 @@ with the pending branches merged in, as above.
    ./build-macos.sh
    build-macos/tpw --run --resolution 1024x768
    ```
-   `--resolution` takes 512x384 up to 2048x1536 (4:3, the 2.0 patch's own
-   choices), or `options` to leave it to the game.
+   `--resolution` takes any `WxH` from 640x480 up, widescreen included
+   (`1920x1080`, `3440x1440`), `native` for the desktop's size, or `options`
+   to leave it to the game's Options screen. It is remembered for later runs.
+   The game's own sizes (512x384 to 2048x1536, 4:3) go through its own
+   setting; any other size is set where the game sets its screen size (a lift
+   patch). Widescreen shows more of the park left and right. Not yet right
+   at widescreen: the 3D HUD models (control panel, advisor) stretch towards
+   the screen's sides, and loading screens and movies stretch to the width.
+   The renderer is software, so large sizes are slow.
 
    The game opens full screen, in its own Space on macOS (`--windowed` for
    a window; F11 or Alt+Enter toggles). The game draws its own cursor, so the
