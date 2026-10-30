@@ -120,7 +120,7 @@ def register(api, APIS, Handle):
         hp = e.os.new_handle(Handle('process', child=c))
         ht = e.os.new_handle(Handle('thread', child=c))
         c.debugged = bool(flags & 3)
-        e.write(a(9), struct.pack('<4I', hp, ht, 0x2000, 0x2004))
+        e.write(a(9), struct.pack('<4I', hp, ht, c.emu.pid, c.emu.pid + 4))
         return 1
 
     @api(5, 'ReadProcessMemory')

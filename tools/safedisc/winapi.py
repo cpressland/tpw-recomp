@@ -1238,7 +1238,10 @@ def CreateFileMappingA(e, a):
     buf = e.alloc(align_up(size or 0x1000), 0x1000)
     e.write(buf, data[:size] + b'\0' * (size - len(data[:size])))
     e.os.last_error = 0
-    return e.os.new_handle(Handle('mapping', name=name, buf=buf, size=size, path=path))
+    m = Handle('mapping', name=name, buf=buf, size=size, path=path)
+    if name:
+        e.shared['named'][name] = (e, m)
+    return e.os.new_handle(m)
 
 
 def align_up(n):
@@ -1251,6 +1254,18 @@ def OpenFileMappingA(e, a):
     for x in e.os.handles.values():
         if x.kind == 'mapping' and x.name == name:
             return e.os.new_handle(x)
+    # Another process's: processes run one after another here, so the
+    # creator's contents as it left them are copied into this one.
+    if name in e.shared['named']:
+        owner, m = e.shared['named'][name]
+        buf = e.alloc(align_up(m.size or 0x1000), 0x1000)
+        e.write(buf, owner.read(m.buf, m.size))
+        print(f'  OpenFileMapping {name}: from pid {owner.pid:#x}, {m.size:#x} bytes')
+        if e.verbose or os.environ.get('SDEMU_SHOWMAP'):
+            data = owner.read(m.buf, m.size)
+            for i in range(0, len(data), 32):
+                print(f'    +{i:03x} {data[i:i + 32].hex(" ", 4)}')
+        return e.os.new_handle(Handle('mapping', name=name, buf=buf, size=m.size, path=None))
     print(f'  OpenFileMapping {name}: none')
     e.os.last_error = 2
     return 0

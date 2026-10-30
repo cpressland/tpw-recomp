@@ -15,7 +15,7 @@ import time
 
 import pefile
 from unicorn import (Uc, UcError, UC_ARCH_X86, UC_MODE_32, UC_HOOK_CODE,
-                     UC_HOOK_INTR, UC_HOOK_MEM_INVALID, UC_PROT_ALL)
+                     UC_HOOK_INTR, UC_HOOK_MEM_INVALID, UC_HOOK_MEM_WRITE, UC_PROT_ALL)
 from unicorn.x86_const import *  # noqa: F401,F403
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -57,6 +57,34 @@ class Emu:
         self.heap = HEAP
         self.trace = []
         self.api_count = 0
+        self.hist = {}              # (api, return address) -> calls
+        self.progress = int(os.environ.get('SDEMU_PROGRESS', '0'))
+        self.t0 = time.time()
+        self.sampled = False
+        self.faults = {}            # eip -> access violations raised there
+        self.ms_per_call = int(os.environ.get('SDEMU_MS_PER_CALL', '1'))
+        for x in filter(None, os.environ.get('SDEMU_REGS', '').split(',')):
+            a = int(x, 16)       # print registers and the frame's arguments here
+            self.uc.hook_add(UC_HOOK_CODE, self._regs_hook, begin=a, end=a)
+        for x in filter(None, os.environ.get('SDEMU_WATCH', '').split(',')):
+            a = int(x, 16)       # report every write that touches this dword
+            self.uc.hook_add(UC_HOOK_MEM_WRITE, self._watch_hook, begin=a - 3, end=a + 3)
+        sample = float(os.environ.get('SDEMU_SAMPLE', '0'))
+        if sample:
+            import threading
+
+            def sampler():
+                while True:
+                    time.sleep(sample)
+                    if getattr(self, '_run_stack', None):
+                        self.sampled = True
+                        self.uc.emu_stop()
+            threading.Thread(target=sampler, daemon=True).start()
+        self.hits = {}              # SDEMU_COUNT addresses -> times executed
+        for x in filter(None, os.environ.get('SDEMU_COUNT', '').split(',')):
+            a = int(x, 16)
+            self.hits[a] = 0
+            self.uc.hook_add(UC_HOOK_CODE, self._count_hook, begin=a, end=a)
         self.stop_reason = None
         self.pending = None         # set by an API that redirects EIP
         self.seh_state = None
@@ -209,6 +237,22 @@ class Emu:
     def special(self, idx):
         return SPECIAL + idx
 
+    def _regs_hook(self, uc, addr, size, _):
+        r = [self.reg(x) for x in (UC_X86_REG_EAX, UC_X86_REG_EBX, UC_X86_REG_ECX, UC_X86_REG_EDX,
+                                   UC_X86_REG_ESI, UC_X86_REG_EDI, UC_X86_REG_EBP, UC_X86_REG_ESP)]
+        ebp = r[6]
+        args = [self.r32(ebp + 8 + 4 * i) if self.is_mapped(ebp + 8 + 4 * i, 4) else 0 for i in range(6)]
+        print(f'  ## {self.name} {addr:08x} after {self.api_count}: '
+              + ' '.join(f'{v:08x}' for v in r) + ' | args ' + ' '.join(f'{v:08x}' for v in args),
+              flush=True)
+
+    def _watch_hook(self, uc, access, addr, size, value, _):
+        print(f'  @@ {self.name} write [{addr:08x}]={value & ((1 << 8 * size) - 1):0{2 * size}x} '
+              f'from {self.reg(UC_X86_REG_EIP):08x} after {self.api_count} calls', flush=True)
+
+    def _count_hook(self, uc, addr, size, _):
+        self.hits[addr] += 1
+
     def _thunk_hook(self, uc, addr, size, _):
         if addr >= SPECIAL:
             self.os.special(addr - SPECIAL)
@@ -218,7 +262,11 @@ class Emu:
         ret = self.r32(esp)
         args = lambda n: self.r32(esp + 4 + 4 * n)  # noqa: E731
         self.api_count += 1
-        self.os.ms += 1              # time passes as the program works
+        self.hist[(name, ret)] = self.hist.get((name, ret), 0) + 1
+        if self.progress and self.api_count % self.progress == 0:
+            print(f'  .. {self.name} {self.api_count} calls, {time.time() - self.t0:.0f}s, '
+                  f'{name} @0x{ret:08X}', flush=True)
+        self.os.ms += self.ms_per_call   # time passes as the program works
         if self.max_api and self.api_count > self.max_api:
             self.stop_reason = f'API budget of {self.max_api} calls spent'
             uc.emu_stop()
@@ -406,6 +454,10 @@ class Emu:
                     eip_now = self.reg(UC_X86_REG_EIP)
                     if self.fault:
                         access, addr, _ = self.fault
+                        n = self.faults[eip_now] = self.faults.get(eip_now, 0) + 1
+                        if n > 1000:
+                            raise SystemExit(f'exception storm: {n} faults at 0x{eip_now:08X} '
+                                             f'touching 0x{addr:08X}')
                         self.os.dispatch_exception(0xC0000005, eip_now,
                                                    (1 if access in (20, 21, 22) else 0, addr))
                         eip = self.reg(UC_X86_REG_EIP)
@@ -414,6 +466,11 @@ class Emu:
                 if self.stop_reason:
                     raise SystemExit(self.stop_reason)
                 eip = self.reg(UC_X86_REG_EIP)
+                if self.sampled:
+                    self.sampled = False
+                    print(f'  ~~ {self.name} sample eip={eip:08x} esp={self.reg(UC_X86_REG_ESP):08x} '
+                          f'after {self.api_count} calls, {time.time() - self.t0:.0f}s', flush=True)
+                    continue
                 if until and eip == until:
                     return
                 if self.os.deferred:
@@ -459,6 +516,16 @@ def main():
             print(f'=== {proc.name} stopped: {ex}')
         finally:
             print(f'{proc.api_count} API calls, {time.time() - t:.1f}s; stop: {proc.stop_reason}')
+            for spec in filter(None, os.environ.get('SDEMU_DUMP', '').split(',')):
+                lo_, n_ = (int(x, 16) for x in spec.split(':'))
+                if proc.is_mapped(lo_, n_):
+                    with open(os.path.join(a.out, f'mem_{proc.name}_{lo_:08x}.bin'), 'wb') as f:
+                        f.write(proc.read(lo_, n_))
+            for a_, c in proc.hits.items():
+                print(f'  hit {a_:08X} x{c}')
+            if os.environ.get('SDEMU_HIST'):
+                for (n, r), c in sorted(proc.hist.items(), key=lambda kv: -kv[1])[:25]:
+                    print(f'  {c:8}  {n} @0x{r:08X}')
             proc.os.finish()
             os.makedirs(a.out, exist_ok=True)
             for m in proc.modules.values():

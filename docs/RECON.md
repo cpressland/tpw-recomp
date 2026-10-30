@@ -112,7 +112,40 @@ build from the ISO alone.
   modulo a count from the disc's descriptor. The emulator finds that function
   by its constant and makes those reads slow on a virtual clock. The check
   passes.
-- **Then** the loader starts a second `tp.exe` suspended, writes a stub onto
-  its stack and resumes it; the stub loads `dplayerx.dll`, which decrypts
-  with TEA in place and keeps re-checking (secdrv, debuggers, timing) in a
-  loop the emulator does not yet leave. That is where it stops.
+- **Then** the loader starts a second `tp.exe` suspended, writes a 0xB5-byte
+  stub onto its stack (`0x12FF07`) and resumes it; the stub loads
+  `dplayerx.dll`. The parent also creates two named mappings for the child,
+  `ELBANG63719_<pid>` (0x28 bytes: `TP.ICD`'s IAT RVA `0x2FD000`/`0x610` and
+  import area `0x323F60`/`0x2B2C`) and `MDJ240167_<pid>` (0xC8 bytes, holding
+  two encrypted import entries), named by the child's process id.
+- **The child** (about 1.6M API calls, all of them passing): `dplayerx`
+  hashes its own code sections over and over, between secdrv command 0x3C
+  checks (about 940 rounds), then hashes the loader's code sections and
+  rebuilds the loader's KERNEL32 imports from a heap copy of its image.
+  Entry 0 of that table is replaced by the first `MDJ` value and decoded as
+  `(entry ^ K) + base`.
+- **Where it stops**: `K` comes out as `0xBC674A35` and the decoded pointer
+  lands in kernel space. It does not depend on the emulated clock rate. `K`
+  is built as `((A ^ S) + 0x2D8 + 0x16860)` (0x16860 is the loader's entry
+  RVA), where `S` is the sum of the hashes of the loader's three code
+  sections (the hash skips relocated bytes; the sections are byte-identical
+  to the file when hashed), and `A` is a 128-bit key at `0x90ACC0` whose
+  first word is XORed with eight values `G * b_i`. The `b_i` come from
+  constants the parent copies into the stub (`0x413A76` in the loader);
+  `G` (`[0x90B1C0]`) is a sum of three dwords that `dplayerx` reads from its
+  own decrypted code, an integrity check. The hidden entry should decode to
+  `0x32470` (`K = 0x7C8DE30D`), so one of these inputs differs from a real
+  run.
+- **Known plaintext**: `TP.ICD` has the same layout as the no-CD
+  executable. Only its KERNEL32 and USER32 name tables are encrypted, all
+  161 entries with one XOR key, `0x7C8D8B73`; one entry of each is zeroed
+  (`GetDriveTypeA`, `GetKeyboardLayout`) and supplied through `MDJ`. The
+  code and data sections (entropy 7.99) are the TEA-encrypted part still to
+  be reached.
+
+Fixed in the emulator along the way: `CreateProcess` reported a hard-coded
+process id (so the child looked for `…_00001200` mappings the parent had
+named `…_00002000`), and named mappings were private to each emulated
+process. Diagnostics: `SDEMU_HIST`, `SDEMU_PROGRESS`, `SDEMU_SAMPLE`,
+`SDEMU_COUNT`, `SDEMU_WATCH`, `SDEMU_REGS`, `SDEMU_DUMP`, `SDEMU_SHOWMAP`,
+`SDEMU_MS_PER_CALL`; 1000 faults at one address now stop the run.
