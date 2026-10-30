@@ -19,23 +19,23 @@ still awaiting review upstream; see [pcrecomp: pending merges](#pcrecomp-pending
 ## What you need
 
 Nothing from the game is in this repository, and nothing generated from it.
-You supply:
+You supply two free downloads:
 
-1. **The retail disc image, `TPWORLD.ISO`**, free from the Internet Archive:
+1. **The retail disc image, `TPWORLD.ISO`**, from the Internet Archive:
    <https://archive.org/details/tpworld_202307>
    (MD5 `0a792a18af8b4d5fdbe4957e4eeaaf0a`).
-2. **The 2.0 executable without SafeDisc**, `tp.exe`
-   (MD5 `e4c2a8979d1a5d7e705976c1d4d511be`). The disc's executable is
-   SafeDisc 1.35-encrypted, and its loader cannot run on a modern system;
-   `tools/safedisc` emulates it far enough to pass the disc check, but not
-   yet to the decrypted game (docs/RECON.md).
-
-3. **The 2.0 patch**, `themeparkworld20patch.zip`, free from
+2. **The 2.0 patch**, `themeparkworld20patch.zip`, from
    [ModDB](https://www.moddb.com/downloads/theme-park-world-20-patch).
-   The 2.0 executable needs the 2.0 data (new fonts, an updated resource
-   index, rides and levels); `tools/rtpatch/apply.py` applies it to the
-   disc's files with the patch's own RTPatch applier, run headlessly, so
-   there is no Windows installer to run. Its data cannot be shipped here.
+   `tools/rtpatch/apply.py` applies it to the disc's files with the patch's
+   own RTPatch applier, run headlessly, so there is no Windows installer to
+   run. Its data cannot be shipped here.
+
+The game's executable is protected by SafeDisc 1.41, whose loader cannot
+run on a modern system. `tools/safedisc/unwrap.py` runs it headlessly under
+an emulator against the disc image, lets it decrypt the game, and writes the
+game back out as a plain executable (docs/RECON.md). No cracked executable
+is needed. The 2000-era no-CD `tp.exe`
+(MD5 `e4c2a8979d1a5d7e705976c1d4d511be`) still works in its place.
 
 ## pcrecomp: pending merges
 
@@ -82,26 +82,30 @@ with the pending branches merged in, as above.
    ```
    uv venv .venv && uv pip install --python .venv/bin/python pefile capstone unicorn
    ```
-2. The game folder: the disc's files, patched to 2.0, with the 2.0 `tp.exe`
-   over the SafeDisc loader (needs `p7zip`):
+2. The game folder: the disc's files, patched to 2.0, with the game
+   unwrapped from SafeDisc over its loader (needs `p7zip`):
    ```
    mkdir -p work && 7z x -owork/cd TPWORLD.ISO
    .venv/bin/python -I tools/rtpatch/apply.py themeparkworld20patch.zip work/cd work/v20
-   cp -Rc work/v20 game && cp /path/to/tp.exe game/TP.EXE && rm game/TP.ICD
+   .venv/bin/python -I tools/safedisc/unwrap.py --cd work/v20 --iso TPWORLD.ISO -o work/unwrap/TP.EXE
+   cp -Rc work/v20 game && cp work/unwrap/TP.EXE game/TP.EXE && rm game/TP.ICD
    ```
    `apply.py` should end with `done`, all three patches returning 0.
+   `unwrap.py` takes about a minute and should report `125` KERNEL32 and
+   `38` USER32 imports behind SafeDisc stubs, `585 call sites` and name key
+   `0x7c8d8b73`.
 3. Headers, imports and C++ classes (seconds):
    ```
    mkdir -p work/tp
    .venv/bin/python ../pcrecomp/tools/pe/pe_analyze.py game/tp.exe --json work/tp/pe_analysis.json
    .venv/bin/python ../pcrecomp/tools/cpp/rtti.py game/tp.exe -o work/tp/rtti.json --seeds work/tp/rtti_seeds.json
    ```
-4. The function catalog (a few minutes): `Functions: 33994`, 94.8% coverage.
+4. The function catalog (a few minutes): `Functions: 34444`, 94.8% coverage.
    ```
    .venv/bin/python ../pcrecomp/tools/disasm/disasm32.py game/tp.exe -o work/tp/functions.json --seed-functions work/tp/rtti_seeds.json
    ```
 5. Code reached only through data tables, then the lift (under a minute):
-   `lifted 34344   not-lifted stubs 0   errors 0`.
+   `lifted 34790   not-lifted stubs 0   errors 0`.
    ```
    .venv/bin/python -I tools/gen/data_code_ptrs.py game/TP.EXE work/tp/functions.json work/tp/run_seeds.json
    .venv/bin/python run_lift.py --all

@@ -34,10 +34,9 @@ and SCSI reads), derives the key, decrypts `TP.ICD` and runs it.
 
 ~3 MB of x86 code once decrypted: comparable to Red Alert 2.
 
-**This is the gating problem.** Nothing can be lifted until `.text` is
-decrypted, and the public write-ups agree the SafeDisc 1 key needs the
-original disc (or a 1:1 raw copy). A 2048-byte ISO may not carry what the
-disc check reads.
+This was the gating problem: nothing can be lifted until `.text` is
+decrypted. It is now solved from the ISO alone, by running the loader
+under emulation (below).
 
 ## The 2.0 patch (`themeparkworld20patch.zip`)
 
@@ -50,27 +49,33 @@ disc check reads.
   (`clcd16/32.dll`, `clokspl.exe`, `dplayerx.dll`, `drvmgt.dll`), `QMixer.dll`,
   `weachatr.dll`, `weauploadr.dll`, `data\_Resolution.sam`, `data\high.sam`,
   `data\med.sam` and cursors under `data\ui\cursors`.
-- So the patched `TP.ICD` is **still SafeDisc-encrypted**, and applying the
-  patch needs an RTPatch applier (proprietary format; the applier DLL could be
-  run under emulation).
+- So the patched `TP.ICD` is **still SafeDisc-encrypted**, now SafeDisc
+  1.41 (`1.41.000` in the patched loader), and applying the patch needs an
+  RTPatch applier (proprietary; `tools/rtpatch` runs its own DLL under
+  emulation).
 
-## The executable we lift: Sim Theme Park World 2.0, no-CD
+## The executable we lift: Sim Theme Park World 2.0, unwrapped
 
-`game/tp.exe`, MD5 `e4c2a8979d1a5d7e705976c1d4d511be`, 3,734,528 bytes: the
-2.0-patched executable with SafeDisc removed (a 2000-era no-CD release; its
-PE timestamp, `0x63732172`, was rewritten when it was unwrapped, and
-`run_lift.py` and the host check for it). It is a plain MSVC image: entry
-`0x0067EE10` is `_WinMainCRTStartup`, and every section is decrypted.
+`tools/safedisc/unwrap.py` writes `TP.ICD` out decrypted (below). It keeps
+the ICD's own PE timestamp, `0x38DB8658`, which `run_lift.py` and the host
+check. It is a plain MSVC image: entry `0x0067EE10` is `_WinMainCRTStartup`.
 
-| Section  | RVA      | Virtual size | Entropy |
-|----------|----------|--------------|---------|
-| .text    | 0x001000 | 0x2e5a7a     | 6.68    |
-| cseg     | 0x2e7000 | 0x0156b2     | 6.57    |
-| .rdata   | 0x2fd000 | 0x029a99     | 4.80    |
-| .data    | 0x327000 | 0x88dcd8     | 4.29    |
-| dseg, uva_data, idct_dat, grpoly_d, tqia_dat, lbmpeg_d, .rsrc | | | |
+The 2000-era no-CD release of the same build (MD5
+`e4c2a8979d1a5d7e705976c1d4d511be`, timestamp rewritten to `0x63732172`) is
+also accepted. Against it, the unwrapped image differs in one byte of code
+(the crack's own patch, `jne` to `jmp` at `0x005AA5AD`, past a CD check our
+host passes anyway), the order of the import tables, and junk in two
+sections' padding.
 
-`.text` and `cseg` (Bullfrog's hand-written code) are adjacent, one code
+| Section  | RVA      | Virtual size |
+|----------|----------|--------------|
+| .text    | 0x001000 | 0x2e5a7a     |
+| CSEG     | 0x2e7000 | 0x0156b2     |
+| .rdata   | 0x2fd000 | 0x029a99     |
+| .data    | 0x327000 | 0x88dcd8     |
+| DSEG, UVA_DATA, IDCT_DAT, GRPOLY_D, TQIA_DAT, LBMPEG_D, .rsrc | | |
+
+`.text` and `CSEG` (Bullfrog's hand-written code) are adjacent, one code
 range `0x00401000-0x006FC800`, lifted as one.
 
 Imports: KERNEL32 (125), USER32 (38), GDI32, ADVAPI32, WSOCK32, DDRAW
@@ -84,68 +89,72 @@ The pipeline's numbers:
 
 | Step | Result |
 |------|--------|
+| `unwrap.py` | 163 hidden imports, 585 call sites, about a minute |
 | `pe_analyze.py` | 21 import DLLs |
 | `rtti.py` | 52 classes, 167 virtual methods (the engine is mostly C) |
-| `disasm32.py` | 33,994 functions, 94.8% byte coverage |
-| `run_lift.py --all` | 33,997 lifted, 0 errors, 198 without a terminator, 4.29M lines of C |
+| `disasm32.py` | 34,444 functions, 94.8% byte coverage |
+| `run_lift.py --all` | 34,790 lifted, 0 errors, 225 without a terminator, 4.44M lines of C |
 
-## SafeDisc 1.35, emulated (tools/safedisc)
+## SafeDisc 1.41, emulated (tools/safedisc)
 
-Before the no-CD build was available we ran the retail loader headlessly,
-under Unicorn, against the ISO. It gets through the outer loader and its
-disc check; what it learned is kept here because it is the route to a
-build from the ISO alone.
+`sdemu.py` runs the retail loader headlessly under Unicorn, against the disc
+image, answering every Win32 call in Python.
 
 - **Anti-debug**: `IsDebuggerPresent`, `NtQueryInformationProcess(7)`,
   `\\.\SICE`/`\\.\NTICE`, and `int 1`/`int 3` whose exceptions must look
   exactly as Windows NT reports them (an `int 1` from ring 3 is an access
   violation at the instruction).
 - **secdrv.sys**: one IOCTL, `0xEF002407`, answered in user mode with the
-  latest driver's constants (from RibShark's SafeDiscShim).
+  latest driver's constants (from RibShark's SafeDiscShim). They are the
+  right ones: `dplayerx` decrypts its own code with the 0x3C answer
+  (`0x400`), and gives up on any other 0x3D answer than `0x2C8`.
 - **The disc**: SCSI pass-through READ(10) on `\\.\D:`, plus TOC and address
   queries. A band of filler sectors, LBA 510 to 10510, follows
   `00000001.TMP` and belongs to no file.
 - **Weak sectors**: the loader times reads of ordinary filler sectors, then
   of one it calls weak, and wants the weak read to take more than twice the
   average. Which sectors are weak is a hash over the LBA, in one function of
-  the loader (`0x00404590` in 1.35): `((lba ^ seed) * K + 0x6A7F) >> 8`
-  modulo a count from the disc's descriptor. The emulator finds that function
-  by its constant and makes those reads slow on a virtual clock. The check
-  passes.
-- **Then** the loader starts a second `tp.exe` suspended, writes a 0xB5-byte
-  stub onto its stack (`0x12FF07`) and resumes it; the stub loads
-  `dplayerx.dll`. The parent also creates two named mappings for the child,
-  `ELBANG63719_<pid>` (0x28 bytes: `TP.ICD`'s IAT RVA `0x2FD000`/`0x610` and
-  import area `0x323F60`/`0x2B2C`) and `MDJ240167_<pid>` (0xC8 bytes, holding
-  two encrypted import entries), named by the child's process id.
-- **The child** (about 1.6M API calls, all of them passing): `dplayerx`
-  hashes its own code sections over and over, between secdrv command 0x3C
-  checks (about 940 rounds), then hashes the loader's code sections and
-  rebuilds the loader's KERNEL32 imports from a heap copy of its image.
-  Entry 0 of that table is replaced by the first `MDJ` value and decoded as
-  `(entry ^ K) + base`.
-- **Where it stops**: `K` comes out as `0xBC674A35` and the decoded pointer
-  lands in kernel space. It does not depend on the emulated clock rate. `K`
-  is built as `((A ^ S) + 0x2D8 + 0x16860)` (0x16860 is the loader's entry
-  RVA), where `S` is the sum of the hashes of the loader's three code
-  sections (the hash skips relocated bytes; the sections are byte-identical
-  to the file when hashed), and `A` is a 128-bit key at `0x90ACC0` whose
-  first word is XORed with eight values `G * b_i`. The `b_i` come from
-  constants the parent copies into the stub (`0x413A76` in the loader);
-  `G` (`[0x90B1C0]`) is a sum of three dwords that `dplayerx` reads from its
-  own decrypted code, an integrity check. The hidden entry should decode to
-  `0x32470` (`K = 0x7C8DE30D`), so one of these inputs differs from a real
-  run.
-- **Known plaintext**: `TP.ICD` has the same layout as the no-CD
-  executable. Only its KERNEL32 and USER32 name tables are encrypted, all
-  161 entries with one XOR key, `0x7C8D8B73`; one entry of each is zeroed
-  (`GetDriveTypeA`, `GetKeyboardLayout`) and supplied through `MDJ`. The
-  code and data sections (entropy 7.99) are the TEA-encrypted part still to
-  be reached.
+  the loader: `((lba ^ seed) * K + 0x6A7F) >> 8` modulo a count from the
+  disc's descriptor. The emulator finds that function by its constant and
+  makes those reads slow on a virtual clock. The check passes.
+- **The child**: the loader starts itself again, suspended, writes a
+  0xB5-byte stub onto the child's stack (`0x12FF07`, loading `dplayerx.dll`
+  and carrying the parent's 128-bit key) and resumes it. It also creates two
+  named mappings for the child, by the child's process id:
+  `ELBANG63719_<pid>` (0x28 bytes, a constant from the loader's overlay:
+  `TP.ICD`'s IAT `0x2FD000`/`0x610` and import area `0x323F60`/`0x2B2C`) and
+  `MDJ240167_<pid>` (two encrypted name-table entries).
+- **The keys** are all derived, none read from the disc: the parent's key
+  from a seed in the loader XORed with constants and a hash of its own
+  decrypted code; the child's from that, hashes of `dplayerx`'s own code
+  (kept in a state block inside its `.text`), and hashes of the code
+  sections of the image at `0x400000`, plus that image's entry RVA.
+- **The image at `0x400000` must be `TP.ICD`**. Every offset the parent
+  passes and every key the child derives is the ICD's: with the loader's own
+  image there, the child's import key comes out wrong and it faults. With
+  `TP.ICD` mapped as the suspended child's image, `dplayerx` decrypts it in
+  place (887 pages), rebuilds its imports and jumps to its entry, and the
+  result matches the no-CD release byte for byte (above). How Windows itself
+  ends up with the ICD there, given `CreateProcessA("D:\TP.EXE")`, is not
+  yet understood; the emulator maps it (`child_image`) and the result
+  verifies.
+- **Imports**: KERNEL32 and USER32 stay hidden after decryption. Their
+  address tables hold stubs (`push magic; pushfd; pushad; push esp; push
+  index; push dll; call resolver`), and the resolver picks the API from the
+  call's return address, so a call site names some slot of the right DLL
+  but not its own: 585 sites do. From an address that is no call site, a
+  stub falls back to its own slot. Their name tables are XOR-encrypted
+  (`0x7C8D8B73`), the names too, and entry 0 of each is zeroed and comes
+  from `MDJ` (`GetDriveTypeA`, `GetKeyboardLayout`). `unwrap.py` resolves
+  each slot and each call site by running the stubs, finds the key as the
+  one whose entries leave holes the size of the names, and writes the names
+  back in plain text.
 
 Fixed in the emulator along the way: `CreateProcess` reported a hard-coded
 process id (so the child looked for `…_00001200` mappings the parent had
 named `…_00002000`), and named mappings were private to each emulated
 process. Diagnostics: `SDEMU_HIST`, `SDEMU_PROGRESS`, `SDEMU_SAMPLE`,
 `SDEMU_COUNT`, `SDEMU_WATCH`, `SDEMU_REGS`, `SDEMU_DUMP`, `SDEMU_SHOWMAP`,
-`SDEMU_MS_PER_CALL`; 1000 faults at one address now stop the run.
+`SDEMU_MS_PER_CALL`, `SDEMU_POKE` (`at@addr=value`), `SDEMU_SECDRV_CHILD`
+(`cmd=value` for children), `SDEMU_TRACE_MAX`; 1000 faults at one address
+stop the run.

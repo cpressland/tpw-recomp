@@ -886,6 +886,7 @@ def GetProcAddress(e, a):
         dll = f'hmod_{h:08x}'
     if e.verbose:
         print(f'  GetProcAddress {dll}!{name}')
+    e.shared.setdefault('lookups', []).append((e.pid, dll, name))
     return e.thunk(dll, name)
 
 
@@ -1690,6 +1691,8 @@ def BaseProcessStart(e, a):
     # then exit with its result.
     entry = e.reg(UC_X86_REG_EAX)
     print(f'  BaseProcessStart -> {entry:#x}')
+    if e.shared.get('stop_at_entry') and e.pid != e.shared.get('first_pid'):
+        raise Stop(f'entry {entry:#x}')
     esp = e.reg(UC_X86_REG_ESP)
     e.w32(esp, e.thunk('kernel32.dll', 'ExitThread'))
     e.setreg(UC_X86_REG_EIP, entry)

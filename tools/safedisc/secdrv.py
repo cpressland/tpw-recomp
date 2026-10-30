@@ -7,6 +7,7 @@ The replies follow the latest driver (4.03.086), which answers each command
 with a constant; the protocol is documented by RibShark's SafeDiscShim
 (https://github.com/RibShark/SafeDiscShim).
 """
+import os
 import struct
 
 IOCTL_MAIN = 0xEF002407
@@ -36,6 +37,10 @@ def ioctl(emu, inb, out_size):
     print(f'  secdrv: v{major}.{minor:02}.{patch:03} command {cmd:#x} from {backtrace(emu)}')
     if cmd in REPLIES:
         value = REPLIES[cmd]
+        for kv in filter(None, os.environ.get('SDEMU_SECDRV_CHILD', '').split(',')):
+            k, v = kv.split('=')     # experiments: other replies, for children only
+            if int(k, 16) == cmd and emu.pid != 0x1000:
+                value = int(v, 16)
     elif cmd == 0x3F and out_size == 0xC18 and extra[0] <= 0x60:
         value = 0
     elif cmd == 0x40 and out_size == 0xC18 and extra[0] and extra[1]:

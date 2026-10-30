@@ -42,7 +42,8 @@ class Emu:
         # pointer handed to a child still means the same function), system
         # module bases, named kernel objects.
         self.shared = shared if shared is not None else dict(
-            thunks={}, thunk_by_name={}, fake_mods={}, named={}, next_pid=pid + 0x100)
+            thunks={}, thunk_by_name={}, fake_mods={}, named={}, next_pid=pid + 0x100,
+            first_pid=pid)
         self.pid = pid
         self.max_api = int(os.environ.get('SDEMU_MAX_API', '0'))
         self.name = name
@@ -58,11 +59,20 @@ class Emu:
         self.trace = []
         self.api_count = 0
         self.hist = {}              # (api, return address) -> calls
+        self.trap = None            # return address whose API call is caught, not run
+        self.trapped = None
         self.progress = int(os.environ.get('SDEMU_PROGRESS', '0'))
         self.t0 = time.time()
         self.sampled = False
         self.faults = {}            # eip -> access violations raised there
         self.ms_per_call = int(os.environ.get('SDEMU_MS_PER_CALL', '1'))
+        for x in filter(None, os.environ.get('SDEMU_POKE', '').split(',')):
+            at, _, rest = x.partition('@')   # experiments: dword=value when EIP reaches at
+            addr, val = (int(v, 16) for v in rest.split('='))
+            self.uc.hook_add(UC_HOOK_CODE, lambda uc, a_, s_, d: (
+                print(f'  !! {self.name} poke [{d[0]:08x}]={d[1]:08x}', flush=True),
+                uc.mem_write(d[0], struct.pack('<I', d[1]))), (addr, val),
+                begin=int(at, 16), end=int(at, 16))
         for x in filter(None, os.environ.get('SDEMU_REGS', '').split(',')):
             a = int(x, 16)       # print registers and the frame's arguments here
             self.uc.hook_add(UC_HOOK_CODE, self._regs_hook, begin=a, end=a)
@@ -242,9 +252,10 @@ class Emu:
                                    UC_X86_REG_ESI, UC_X86_REG_EDI, UC_X86_REG_EBP, UC_X86_REG_ESP)]
         ebp = r[6]
         args = [self.r32(ebp + 8 + 4 * i) if self.is_mapped(ebp + 8 + 4 * i, 4) else 0 for i in range(6)]
+        stack = [self.r32(r[7] + 4 * i) if self.is_mapped(r[7] + 4 * i, 4) else 0 for i in range(6)]
         print(f'  ## {self.name} {addr:08x} after {self.api_count}: '
-              + ' '.join(f'{v:08x}' for v in r) + ' | args ' + ' '.join(f'{v:08x}' for v in args),
-              flush=True)
+              + ' '.join(f'{v:08x}' for v in r) + ' | args ' + ' '.join(f'{v:08x}' for v in args)
+              + ' | stack ' + ' '.join(f'{v:08x}' for v in stack), flush=True)
 
     def _watch_hook(self, uc, access, addr, size, value, _):
         print(f'  @@ {self.name} write [{addr:08x}]={value & ((1 << 8 * size) - 1):0{2 * size}x} '
@@ -260,6 +271,10 @@ class Emu:
         dll, name = self.thunks[addr]
         esp = self.reg(UC_X86_REG_ESP)
         ret = self.r32(esp)
+        if self.trap is not None and ret == self.trap:
+            self.trapped = (dll, name)     # an API reached from the trapped call site
+            uc.emu_stop()
+            return
         args = lambda n: self.r32(esp + 4 + 4 * n)  # noqa: E731
         self.api_count += 1
         self.hist[(name, ret)] = self.hist.get((name, ret), 0) + 1
@@ -429,7 +444,12 @@ class Emu:
         regs = (UC_X86_REG_EAX, UC_X86_REG_EBX, UC_X86_REG_ECX, UC_X86_REG_EDX,
                 UC_X86_REG_ESI, UC_X86_REG_EDI, UC_X86_REG_EBP, UC_X86_REG_ESP)
 
+        left = [int(os.environ.get('SDEMU_TRACE_MAX', '0')) or -1]
+
         def hook(uc, addr, size, _):
+            if left[0] == 0:
+                return
+            left[0] -= 1
             code = bytes(uc.mem_read(addr, size))
             ins = next(md.disasm(code, addr), None)
             text = f'{ins.mnemonic} {ins.op_str}' if ins else code.hex()
@@ -495,8 +515,11 @@ def main():
     ap.add_argument('-v', '--verbose', action='store_true')
     ap.add_argument('--trace', help='LO-HI: log every instruction executed in this range')
     ap.add_argument('--trace-out', default='work/trace.txt')
+    ap.add_argument('--child-image', help="map this file as the loader's suspended child (TP.ICD)")
     a = ap.parse_args()
     emu = Emu(a.cd, a.iso, a.verbose)
+    if a.child_image:
+        emu.shared['child_image'] = a.child_image
     if a.trace:
         lo, hi = (int(x, 16) for x in a.trace.split('-'))
         emu.shared['trace'] = (lo, hi, a.trace_out)

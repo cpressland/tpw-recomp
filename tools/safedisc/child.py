@@ -115,6 +115,11 @@ def register(api, APIS, Handle):
         if not path or not os.path.exists(path):
             e.os.last_error = 2
             return 0
+        # The loader starts itself suspended, but the image dplayerx.dll works
+        # on in that child is the game's (TP.ICD): all its keys and offsets
+        # are the ICD's. Map that instead (see docs/RECON.md).
+        if e.shared.get('child_image') and flags & 4:
+            path = os.path.join(os.path.dirname(path), e.shared['child_image'])
         c = Child(e, path, cmd)
         e.os.children.append(c)
         hp = e.os.new_handle(Handle('process', child=c))
