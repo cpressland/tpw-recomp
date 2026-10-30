@@ -31,6 +31,8 @@ void recomp_dump_trace(const char *why) { (void)why; }
 #endif
 
 extern const uint32_t tpw_entry_va;   /* recomp_dispatch.c */
+int  script_arg(int argc, char **argv, int i);   /* script.c */
+void script_start(void);
 
 #define TPW_IMAGE_BASE 0x00400000u
 #define HKLM 0x80000002u
@@ -149,9 +151,21 @@ static int write_bmp(const char *path) {
     const uint8_t *px;
     const uint32_t *pal;
     int w, h, pitch, bpp;
-    if (!hle_dd_frame(&px, &w, &h, &pitch, &bpp, &pal, NULL)) return -1;
+    /* Copied holding the machine, so a Flip on the game's thread cannot land
+     * half way through the copy. */
+    mach_enter();
+    if (!hle_dd_frame(&px, &w, &h, &pitch, &bpp, &pal, NULL)) { mach_leave(); return -1; }
+    size_t bytes = (size_t)pitch * (size_t)h;
+    uint8_t *copy = malloc(bytes);
+    uint32_t palcopy[256];
+    if (pal) memcpy(palcopy, pal, sizeof palcopy);
+    if (copy) memcpy(copy, px, bytes);
+    mach_leave();
+    if (!copy) return -1;
+    px = copy;
+    if (pal) pal = palcopy;
     FILE *f = fopen(path, "wb");
-    if (!f) return -1;
+    if (!f) { free(copy); return -1; }
     int row = (w * 3 + 3) & ~3;
     uint32_t size = 54u + (uint32_t)row * (uint32_t)h;
     uint8_t hdr[54] = { 'B', 'M' };
@@ -181,6 +195,7 @@ static int write_bmp(const char *path) {
         fwrite(line, 1, (size_t)row, f);
     }
     free(line);
+    free(copy);
     fclose(f);
     return 0;
 }
@@ -220,6 +235,8 @@ int main(int argc, char **argv) {
     int run = 0;
     setvbuf(stderr, NULL, _IONBF, 0);
     for (int i = 1; i < argc; i++) {
+        int n = script_arg(argc, argv, i);
+        if (n) { i += n - 1; continue; }
         if (!strcmp(argv[i], "--run")) run = 1;
         else if (!strcmp(argv[i], "--headless")) g_headless = 1;
         else if (!strcmp(argv[i], "--game") && i + 1 < argc) game = argv[++i];
@@ -237,7 +254,8 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--shot-after") && i + 1 < argc) g_shot_s = (unsigned)strtoul(argv[++i], NULL, 0);
         else if (!strcmp(argv[i], "--shot-every") && i + 1 < argc) g_shot_every = (unsigned)strtoul(argv[++i], NULL, 0);
         else {
-            printf("usage: tpw [--run] [--headless] [--resolution WxH|options] [--game DIR] [--mute] [--watchdog S] [--trace] [--shot FILE.bmp] [--shot-after S] [--shot-every S]\n");
+            printf("usage: tpw [--run] [--headless] [--resolution WxH|options] [--game DIR] [--mute] [--watchdog S] [--trace] [--shot FILE.bmp] [--shot-after S] [--shot-every S]\n"
+                   "           [--move x,y@s] [--click x,y@s] [--rclick x,y@s] [--key vk@s]\n");
             return !strcmp(argv[i], "--help") || !strcmp(argv[i], "-h") ? 0 : 1;
         }
     }
@@ -300,6 +318,7 @@ int main(int argc, char **argv) {
     tpw_trace_start();
     hle_on_exit = on_exit_trace;
 #endif
+    script_start();
     if (g_shot) {
         pthread_t t;
         pthread_create(&t, NULL, shooter, NULL);

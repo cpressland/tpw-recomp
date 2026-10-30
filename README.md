@@ -7,13 +7,14 @@ toolchain and its `runtime/win32hle`, with ideas borrowed from
 [redalert2-recomp](https://github.com/sp00nznet/redalert2-recomp).
 
 **Status: bring-up.** The whole executable lifts to C with no errors and
-builds into a native Mac program that plays the intro and reaches the front
-end, drawn through DirectX 6's Direct3D at up to 2048x1536. No sound yet, and
-input is untried. See [docs/bringup.md](docs/bringup.md) and
+builds into a native Mac program that plays the intro and runs the front end
+and its menus, drawn through DirectX 6's Direct3D at up to 2048x1536, with
+the mouse and keyboard. No sound yet, and loading into a park stalls waiting
+for the welcome speech. See [docs/bringup.md](docs/bringup.md) and
 [docs/RECON.md](docs/RECON.md).
 
-The DirectX 6 it needs (DirectDraw 4, Direct3D 3 and a multi-core software
-rasteriser) is on the `tpw-dx6` branch of pcrecomp, not yet on its `main`.
+It needs pcrecomp's `main` (DirectX 6) and, until it is merged, the
+`win32hle-dinput` branch (DirectInput).
 
 ## What you need
 

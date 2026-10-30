@@ -264,13 +264,6 @@ static void s_ScriptStringGetLogicalWidths(void) {          /* (ssa, &dx) */
     RET(0, 2);
 }
 
-/* ---- dinput: unavailable for now, so the game reads windows' messages ----- */
-
-static void d_DirectInputCreateA(void) {                         /* (hinst, version, out, outer) */
-    if (A32(2)) MEM32(A32(2)) = 0;
-    RET(E_FAIL, 4);
-}
-
 const win32hle_shim tpw_shims[] = {
     { "tpw!GetFileAttributesA", k_GetFileAttributesA },
     { "tpw!CreateFileA", k_CreateFileA },
@@ -308,6 +301,5 @@ const win32hle_shim tpw_shims[] = {
     { "ScriptStringOut", s_ScriptStringOut },
     { "ScriptString_pSize", s_ScriptString_pSize },
     { "ScriptStringGetLogicalWidths", s_ScriptStringGetLogicalWidths },
-    { "DirectInputCreateA", d_DirectInputCreateA },
     { 0, 0 }
 };

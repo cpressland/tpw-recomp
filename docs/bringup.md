@@ -89,11 +89,32 @@ one are at the end.
     (512x384 to 2048x1536); `tpw --resolution 1024x768` writes it, and
     `--resolution options` removes it.
 
-Now: the front end runs through Direct3D at up to 2048x1536 (the intro, the
-logo, the ocean with its islands, the weather, the player slots, the
-advisor), silent. The software renderer still runs, through the 2.0 patch's
-`safemode.tcf` copied to `save\config.tcf`. Next: QMixer for sound; input,
-not yet tried; the game past the front end.
+15. **The mouse**: the game reads its mouse and keyboard through DirectInput 5
+    (buffered, 32 events, relative axes), and with DirectInput refused its
+    cursor never moved; keys reached it through window messages. pcrecomp
+    branch `win32hle-dinput` adds `dinput.c`: the system mouse and keyboard,
+    read from the same state the window messages come from (user32's cursor
+    and key bytes), so both paths agree. The game does not poll: it waits on
+    the event `SetEventNotification` gave, so input arriving (a hook in
+    `hle_input_mouse`/`hle_input_key`) records what changed as buffered
+    events there and then and sets each acquired device's event.
+    `HLE_DITRACE=1` prints the set-up and every buffered read.
+16. **Scripted input** for headless checks, `src/host/script.c`: `--move`,
+    `--click`, `--rclick` and `--key vk` at given seconds, through the same
+    win32hle input calls the SDL window uses. Verified: Escape skips the
+    first movie, the game's cursor follows the mouse, clicking "Create New
+    Player" opens the name dialog, typing and Backspace edit the name, and
+    the tick creates the player (`save\users\1<name>`). The name field
+    keeps its "Type your name" placeholder when clicked: the game's own
+    behaviour, and with its 16-character limit only two letters fit after it.
+17. **Screenshots tearing**: `--shot` copied the primary from its own thread
+    while the game flipped; it now copies holding the machine.
+
+Now: the intro, the front end and its menus run through Direct3D at up to
+2048x1536, with the mouse and keyboard. Loading into a park stalls on its
+"Welcome to Theme Park World" screen: the game reopens the welcome speech
+every frame (`QSWaveMixOpenWaveEx`, which the silent QMixer answers with no
+wave) and waits for it. Next: QMixer, for sound and to get past that screen.
 
 ## The knobs
 
@@ -109,6 +130,9 @@ not yet tried; the game past the front end.
 | `--shot FILE.bmp --shot-after S [--shot-every S]` | the screen, as BMPs |
 | `HLE_D3DTRACE=1` | Direct3D's device, viewports and the interfaces asked for |
 | `HLE_D3DFPS=1` | scenes a second and triangles a scene, every five seconds |
+| `HLE_DITRACE=1` | DirectInput's devices, and every buffered read |
+| `HLE_MSGTRACE=1` | every window message posted |
+| `--move`, `--click`, `--rclick` `x,y@s`, `--key vk@s` | scripted input (`src/host/script.c`) |
 | `game/enginedebug.txt` | the game's own log |
 
 The traced build (`BUILD_DIR=build-macos-trace CMAKE_ARGS=-DTPW_TRACE=ON
