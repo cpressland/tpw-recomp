@@ -25,6 +25,7 @@
 #include "pe_loader.h"
 #include "host.h"
 #include "recomp_target.h"
+#include "d3d_gpu.h"
 #ifdef RECOMP_TRACE
 void tpw_trace_start(void);           /* trace.c */
 #else
@@ -43,6 +44,11 @@ static int g_windowed;                   /* --windowed: not full screen at launc
 static int g_free_mouse;                 /* --free-mouse: the pointer may leave the picture */
 static unsigned g_watchdog_s;
 static const char *g_resolution;         /* --resolution WxH | options */
+#ifdef __APPLE__
+static const char *g_renderer = "metal";      /* --renderer metal | software */
+#else
+static const char *g_renderer = "software";
+#endif
 static const char *g_shot;               /* --shot FILE: the screen, as a BMP */
 static unsigned g_shot_s = 10;           /* --shot-after S */
 static unsigned g_shot_every;            /* --shot-every S: FILE gets _1, _2, ... before .bmp */
@@ -293,6 +299,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--watchdog") && i + 1 < argc) g_watchdog_s = (unsigned)strtoul(argv[++i], NULL, 0);
         else if (!strcmp(argv[i], "--trace")) win32hle_trace = 1;
         else if (!strcmp(argv[i], "--resolution") && i + 1 < argc) g_resolution = argv[++i];
+        else if (!strcmp(argv[i], "--renderer") && i + 1 < argc) g_renderer = argv[++i];
         else if (!strcmp(argv[i], "--shot") && i + 1 < argc) {
             static char path[PATH_MAX];          /* absolute: the run enters the game folder */
             const char *p = argv[++i];
@@ -303,7 +310,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--shot-after") && i + 1 < argc) g_shot_s = (unsigned)strtoul(argv[++i], NULL, 0);
         else if (!strcmp(argv[i], "--shot-every") && i + 1 < argc) g_shot_every = (unsigned)strtoul(argv[++i], NULL, 0);
         else {
-            printf("usage: tpw [--run] [--headless] [--windowed] [--free-mouse] [--resolution WxH|native|options] [--game DIR] [--mute] [--watchdog S] [--trace] [--shot FILE.bmp] [--shot-after S] [--shot-every S]\n"
+            printf("usage: tpw [--run] [--headless] [--windowed] [--free-mouse] [--resolution WxH|native|options] [--renderer metal|software] [--game DIR] [--mute] [--watchdog S] [--trace] [--shot FILE.bmp] [--shot-after S] [--shot-every S]\n"
                    "           [--move x,y@s] [--click x,y@s] [--rclick x,y@s] [--key vk@s]\n");
             return !strcmp(argv[i], "--help") || !strcmp(argv[i], "-h") ? 0 : 1;
         }
@@ -367,6 +374,18 @@ int main(int argc, char **argv) {
      * cursor, and the mouse is held in the picture either way (Ctrl+Cmd lets go). */
     hle_screen_confine(!g_free_mouse);
     if (hle_screen_open(TPW_TITLE, !g_windowed, g_headless) != 0) return 1;
+    /* Direct3D on the GPU (Metal, the default on a Mac), or in software
+     * (pcrecomp's d3d_raster.c), which it falls back to without a Metal device. */
+    if (!strcmp(g_renderer, "metal")) {
+#ifdef __APPLE__
+        hle_d3d_metal_enable();
+#else
+        fprintf(stderr, "--renderer metal: macOS only; software rendering\n");
+#endif
+    } else if (strcmp(g_renderer, "software")) {
+        fprintf(stderr, "--renderer: software or metal\n");
+        return 1;
+    }
 #ifdef RECOMP_TRACE
     tpw_trace_start();
     hle_on_exit = on_exit_trace;

@@ -7,6 +7,9 @@
 # =============================================================================
 cmake_minimum_required(VERSION 3.20)
 project(tpw C)
+if(APPLE)
+  enable_language(OBJC)
+endif()
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE RelWithDebInfo)
@@ -52,6 +55,12 @@ set(GEN_OPT "-O2" CACHE STRING "optimisation for the generated C")
 set_source_files_properties(${GEN_SOURCES} PROPERTIES COMPILE_OPTIONS "-w;${GEN_OPT};-fno-strict-aliasing;-fwrapv")
 target_compile_options(tpw PRIVATE -fno-strict-aliasing -fwrapv)
 target_link_libraries(tpw PRIVATE PkgConfig::SDL2 PkgConfig::SDL2_TTF pthread m)
+# Direct3D on the GPU: Metal (--renderer metal), without ARC (d3d_metal.m).
+if(APPLE)
+  target_sources(tpw PRIVATE ${HLE}/d3d_metal.m)
+  set_source_files_properties(${HLE}/d3d_metal.m PROPERTIES COMPILE_OPTIONS "-fno-objc-arc")
+  target_link_libraries(tpw PRIVATE "-framework Metal" "-framework Foundation")
+endif()
 
 # A function-entry trace for bring-up (src/host/trace.c: TPW_FIRSTHIT and the
 # last entries at exit). Every lifted function pays for it, so it gets its own

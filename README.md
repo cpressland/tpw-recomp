@@ -13,7 +13,7 @@ sound effects, drawn through DirectX 6's Direct3D at up to 2048x1536 and
 played with the mouse and keyboard. See [docs/bringup.md](docs/bringup.md)
 and [docs/RECON.md](docs/RECON.md).
 
-It needs pcrecomp's `main` (DirectX 6) plus three win32hle changes that are
+It needs pcrecomp's `main` (DirectX 6) plus four win32hle changes that are
 still awaiting review upstream; see [pcrecomp: pending merges](#pcrecomp-pending-merges).
 
 ## What you need
@@ -49,10 +49,14 @@ game wouldn't get past a park's loading screen or respond to the mouse.
 | [#159](https://github.com/sp00nznet/pcrecomp/pull/159) | `win32hle-dinput` | DirectInput 3/5: the system mouse and keyboard | **Yes.** Without it the game's cursor never moves, so no menu can be used. |
 | [#160](https://github.com/sp00nznet/pcrecomp/pull/160) | `win32hle-gdi-lfwidth` | A font's `lfWidth` squeezes or stretches its text | **Yes.** Without it the ride-sign fitting loop never ends and a park never loads. |
 | [#161](https://github.com/sp00nznet/pcrecomp/pull/161) | `win32hle-mouse-confine` | The mouse held inside the picture while the window has focus (Ctrl+Cmd lets go) | **Yes.** The host calls its `hle_screen_confine`; without it the build fails, and the pointer escapes the window. |
+| [#163](https://github.com/sp00nznet/pcrecomp/pull/163) | `win32hle-metal` | Direct3D on the GPU through Metal | **Yes.** The host builds `d3d_metal.m` and calls `hle_d3d_metal_enable`; without it the build fails. |
 | [#158](https://github.com/sp00nznet/pcrecomp/pull/158) | `win32hle-dx6-followups` | DirectDraw 4 review follow-ups (resized textures, attached z-buffers, uniqueness values) | No. Correctness fixes from #154's review; TPW runs without them. |
 
 To build against them, merge the needed branches into a local branch of
-your pcrecomp clone. They merge cleanly into `main` and with each other:
+your pcrecomp clone. They merge cleanly into `main`. `win32hle-metal` and
+`win32hle-dinput` each add a row at the same place in
+`runtime/win32hle/README.md`, so merge `win32hle-metal` on its own and keep
+both rows there:
 
 ```
 cd ../pcrecomp
@@ -60,6 +64,8 @@ git remote add cpressland https://github.com/cpressland/pcrecomp
 git fetch origin && git fetch cpressland
 git switch -c tpw-local origin/main
 git merge --no-edit cpressland/win32hle-dinput cpressland/win32hle-gdi-lfwidth cpressland/win32hle-mouse-confine
+git merge --no-edit cpressland/win32hle-metal    # keep both README rows, then:
+git add runtime/win32hle/README.md && git commit --no-edit
 ```
 
 When a PR is merged, drop its branch from that list (and from this table);
@@ -125,7 +131,9 @@ with the pending branches merged in, as above.
    keeps its 4:3 shape, held to the screen's corners and centre
    (`TPW_STRETCH_HUD=1` stretches it as the game would). Loading screens and
    movies keep 4:3 too, with black at the sides.
-   The renderer is software, so large sizes are slow.
+   Direct3D draws on the GPU through Metal (pcrecomp's `d3d_metal.m`);
+   `--renderer software` draws on the CPU instead, as before, which is slow
+   at large sizes.
 
    The game opens full screen, in its own Space on macOS (`--windowed` for
    a window; F11 or Alt+Enter toggles). The game draws its own cursor, so the
