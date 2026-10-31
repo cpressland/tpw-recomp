@@ -71,6 +71,18 @@ PATCHES = {
     0x0065BCAD: '{ extern void tpw_widget(uint32_t, uint32_t); tpw_widget(ecx, esp); }',
     0x00579690: '{ extern void tpw_hud_models(uint32_t, uint32_t, uint32_t); '
                 'tpw_hud_models(MEM32(esp + 8), MEM32(esp + 0xC), MEM32(esp + 0x10)); }',
+    # Splash and loading pictures: once the back buffer is locked, the host
+    # draws the picture at 4:3 with black sides, and the game only unlocks.
+    0x00587191: '{ extern int tpw_splash(uint32_t, uint32_t); '
+                'if (tpw_splash(esi, esp + 0x20)) goto L_005872BA; }',
+    # Movies: their width, and their x when one is given, at 4:3.
+    0x0051B0F7: '{ extern uint32_t tpw_movie_w(void); MEM32(0x802460) = tpw_movie_w(); }',
+    0x0051B150: '{ extern uint32_t tpw_movie_x(uint32_t); MEM32(0x802458) = tpw_movie_x(ecx); }',
+    # Hit circles, of a squeezed widget: made by the layout builder, and the
+    # x distance in their test, after it is stored.
+    0x00660045: '{ extern void tpw_hit_circle(uint32_t, uint32_t); tpw_hit_circle(eax, MEM32(ebp - 0xA0)); }',
+    0x0066C0DA: '{ extern int32_t tpw_circle_dx(uint32_t, int32_t); '
+                'MEM32(ebp - 8) = (uint32_t)tpw_circle_dx(MEM32(ebp - 0x10), (int32_t)eax); }',
 }
 
 # The GUI layout builder (sub_0065FD58) has just read a widget's text

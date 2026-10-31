@@ -199,10 +199,19 @@ stop the run.
     (`sub_00476C50` fits a model's box to a rectangle) and text sit flat
     on depth layers `z = 1 - d/40`; anything else in screen space is
     grouped by overlapping depth and squeezed at the projection.
-- **Not done**: a hit circle keeps its radius, so round buttons accept
-  clicks a little wider than they are drawn; loading screens and movies
-  still stretch to the width (movies sized at `0x51B0ED`); widgets made
-  before a resolution change keep the old squeeze.
+  - **Hit circles.** A circle has one radius in virtual units, which are
+    narrower than tall once squeezed. The builder's circles are noted
+    with their widget, and their test (`sub_0066C0C4`) widens the x
+    distance by `1/k`: the ellipse the button is drawn as.
+  - **One squeeze a run.** With a size of its own, every screen-size switch
+    is held to it, so `k` comes from that size, not the current screen:
+    widgets made before the first switch are squeezed like the rest.
+- **Pictures and movies** are 4:3 and fill the 4:3 width, centred, black
+  at the sides. Splash and loading pictures (`Data\Init\640\*.tga`, the
+  loading bar painted into them) are stretched into the locked back buffer
+  by `sub_00587130`; the host draws them instead. Movies take their size
+  from the screen at `0x51B0ED` (width `0x802460`, x `0x802458` when one is
+  given), and get the 4:3 width there.
 - **Tried and dropped**: squeezing all `w = 1` geometry at the projection
   (pixel-sized text detaches), and giving the GUI a 4:3 width at
   `0xFAA5C4` (absolute positions then crowd to the left).

@@ -22,6 +22,10 @@
  *   models drawn straight in screen space, not fitted to a widget, and come
  *   out per axis too. They are squeezed at the projection (sub_00579690),
  *   which they reach with w = 1.
+ * - Hit circles (tpw_hit_circle, tpw_circle_dx): tested as the ellipse a
+ *   squeezed round button is drawn as.
+ * - Pictures and movies (tpw_splash, tpw_movie_w, tpw_movie_x): 4:3, at the
+ *   4:3 width, centred, with black at the sides.
  */
 #include <math.h>
 #include <stdint.h>
@@ -35,10 +39,19 @@
 #define SCREEN_H 0x7A1930u
 #define GUI_H    0xFAA5C0u   /* the GUI's idea of the screen height (int16) */
 
-static float squeeze(void) {
-    float w = (float)MEM32(SCREEN_W), h = (float)MEM32(SCREEN_H);
-    float k = w > 0 ? 4.0f * h / (3.0f * w) : 1.0f;
+static float squeeze_for(uint32_t w, uint32_t h) {
+    float k = w > 0 ? 4.0f * (float)h / (3.0f * (float)w) : 1.0f;
     return k < 0.999f && !getenv("TPW_STRETCH_HUD") ? k : 1.0f;
+}
+
+/* The GUI's squeeze: from the run's own size when it has one (main.c), which
+ * every screen-size switch is held to, so a widget made before the first
+ * switch is squeezed as much as the rest; else the game's size, always 4:3. */
+static float squeeze(void) {
+    extern void tpw_run_size(uint32_t *, uint32_t *);
+    uint32_t w = 0, h = 0;
+    tpw_run_size(&w, &h);
+    return w ? squeeze_for(w, h) : squeeze_for(MEM32(SCREEN_W), MEM32(SCREEN_H));
 }
 
 /* Each widget's anchor: -2 a layer, -1 left, 0 centre, 1 right. Keyed by the
@@ -161,4 +174,56 @@ void tpw_hud_models(uint32_t arr, uint32_t stride, uint32_t n) {
         x = o + (x - o) * k;
         memcpy(hle_ptr(arr + i * stride), &x, 4);
     }
+}
+
+/* Pictures and movies drawn to the whole screen are 4:3: they get the 4:3
+ * width, centred, black at the sides. */
+static uint32_t width_43(void) {
+    uint32_t w = MEM32(SCREEN_W), h = MEM32(SCREEN_H);
+    return squeeze_for(w, h) == 1.0f ? w : (h * 4 + 1) / 3;
+}
+
+/* sub_00587130, with the back buffer locked: the splash and loading pictures.
+ * The game stretches the picture (pic: pixels, width, height, bytes a pixel;
+ * rows bottom up) across the screen; here it fills the 4:3 width, centred.
+ * desc is the locked surface's description. Returns 0 to let the game draw. */
+int tpw_splash(uint32_t pic, uint32_t desc) {
+    uint32_t bpp = MEM32(pic + 0xC);
+    int h = (int)MEM32(desc + 8), w = (int)MEM32(desc + 0xC), pitch = (int)MEM32(desc + 0x10);
+    int sw = (int)MEM32(pic + 4), sh = (int)MEM32(pic + 8);
+    if (squeeze_for(w, h) == 1.0f || (bpp != 2 && bpp != 4) || sw <= 0 || sh <= 0 || h <= 0) return 0;
+    int pw = (int)((int64_t)h * sw / sh);
+    if (pw >= w) return 0;
+    int x0 = (w - pw) / 2;
+    uint8_t *src = hle_ptr(MEM32(pic)), *dst = hle_ptr(MEM32(desc + 0x24));
+    for (int y = 0; y < h; y++) {
+        uint8_t *row = dst + (size_t)y * pitch;
+        const uint8_t *s = src + (size_t)((int64_t)(h - y - 1) * sh / h) * sw * bpp;
+        memset(row, 0, (size_t)x0 * bpp);
+        for (int x = 0; x < pw; x++)
+            memcpy(row + (size_t)(x0 + x) * bpp, s + (size_t)((int64_t)x * sw / pw) * bpp, bpp);
+        memset(row + (size_t)(x0 + pw) * bpp, 0, (size_t)(w - x0 - pw) * bpp);
+    }
+    return 1;
+}
+
+/* sub_0051B010 sets a movie's size from the screen's: the 4:3 width. */
+uint32_t tpw_movie_w(void) { return width_43(); }
+
+/* ...and, when it is given an x, the bars' width added to it. */
+uint32_t tpw_movie_x(uint32_t x) { return x + (MEM32(SCREEN_W) - width_43()) / 2; }
+
+/* Hit circles: one radius, in virtual units, which are narrower than tall
+ * once a widget is squeezed. The layout builder makes one for a widget
+ * (tpw_hit_circle), and its test (sub_0066C0C4) widens the x distance back
+ * (tpw_circle_dx), so it tests the ellipse the squeezed button is drawn as. */
+void tpw_hit_circle(uint32_t circle, uint32_t widget) {
+    int8_t *a = anchor_of(widget, 0), *me;
+    if (circle && (me = anchor_of(circle, 1))) *me = a ? *a : -2;
+}
+
+int32_t tpw_circle_dx(uint32_t circle, int32_t dx) {
+    int8_t *a = anchor_of(circle, 0);
+    float k = squeeze();
+    return !a || *a == -2 || k == 1.0f ? dx : (int32_t)lroundf((float)dx / k);
 }

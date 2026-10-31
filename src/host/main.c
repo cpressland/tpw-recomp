@@ -86,6 +86,11 @@ void tpw_size_override(uint32_t *w, uint32_t *h) {
     if (!told++) fprintf(stderr, "[tpw] screen %ux%u\n", g_size_w, g_size_h);
 }
 
+/* The run's own size, or 0x0 when the game's size is used. */
+void tpw_run_size(uint32_t *w, uint32_t *h) {
+    *w = g_size_w, *h = g_size_h;
+}
+
 static int desktop_size(int *w, int *h) {
     SDL_DisplayMode m;
     if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0 || SDL_GetDesktopDisplayMode(0, &m) != 0) return -1;

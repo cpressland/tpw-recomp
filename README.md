@@ -124,7 +124,7 @@ with the pending branches merged in, as above.
    patch). Widescreen shows more of the park left and right, and the HUD
    keeps its 4:3 shape, held to the screen's corners and centre
    (`TPW_STRETCH_HUD=1` stretches it as the game would). Loading screens and
-   movies still stretch to the width.
+   movies keep 4:3 too, with black at the sides.
    The renderer is software, so large sizes are slow.
 
    The game opens full screen, in its own Space on macOS (`--windowed` for
