@@ -121,9 +121,10 @@ with the pending branches merged in, as above.
    to leave it to the game's Options screen. It is remembered for later runs.
    The game's own sizes (512x384 to 2048x1536, 4:3) go through its own
    setting; any other size is set where the game sets its screen size (a lift
-   patch). Widescreen shows more of the park left and right. Not yet right
-   at widescreen: the 3D HUD models (control panel, advisor) stretch towards
-   the screen's sides, and loading screens and movies stretch to the width.
+   patch). Widescreen shows more of the park left and right, and the HUD
+   keeps its 4:3 shape, held to the screen's corners and centre
+   (`TPW_STRETCH_HUD=1` stretches it as the game would). Loading screens and
+   movies still stretch to the width.
    The renderer is software, so large sizes are slow.
 
    The game opens full screen, in its own Space on macOS (`--windowed` for

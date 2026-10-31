@@ -66,7 +66,41 @@ PATCHES = {
     0x0044A156: '{ extern void tpw_size_override(uint32_t *, uint32_t *); '
                 'uint32_t w_ = MEM32(0x7A1968), h_ = MEM32(0x7A1930); tpw_size_override(&w_, &h_); '
                 'MEM32(0x7A1968) = w_; MEM32(0x7A1930) = h_; eax = w_; }',
+    # The HUD at widescreen (src/host/widescreen.c): the widget constructor,
+    # after its push ebp; the projection, for models drawn in screen space.
+    0x0065BCAD: '{ extern void tpw_widget(uint32_t, uint32_t); tpw_widget(ecx, esp); }',
+    0x00579690: '{ extern void tpw_hud_models(uint32_t, uint32_t, uint32_t); '
+                'tpw_hud_models(MEM32(esp + 8), MEM32(esp + 0xC), MEM32(esp + 0x10)); }',
 }
+
+# The GUI layout builder (sub_0065FD58) has just read a widget's text
+# rectangle, hit shape or list columns into its locals: the x fields, as
+# offsets below ebp; the widget is at [ebp-0xA0]. Widgets themselves go
+# through the constructor.
+LAYOUT_X = {
+    0x0065FECA: (0x28, 0x24),   # text rectangle
+    0x0065FF78: (0x28, 0x24),   # hit rectangle
+    0x0065FFF8: (0x28,),        # hit circle's centre
+    0x0066009A: (0x28, 0x24),   # hit rectangle
+    0x00660165: (0x28,),        # hit polygon's point
+    0x00660562: (0x28, 0x24),   # area, of a type 4 widget
+    0x006605BB: (0x28, 0x24),   # area, of a type 7 widget
+    0x0066063F: (0x28, 0x24),   # list column: left, right
+}
+for _va, _offs in LAYOUT_X.items():
+    PATCHES[_va] = ('{ extern void tpw_layout_x(uint32_t, uint32_t); %s }'
+                    % ' '.join('tpw_layout_x(MEM32(ebp - 0xA0), ebp - 0x%X);' % o for o in _offs))
+
+# HUD text placed at an offset from its element ([esi+0xDE]) times the
+# GUI's width: three copies of one routine. The register just loaded with
+# the width gets the 4:3 width instead.
+REL_W = {
+    0x0048F8CC: 'ecx', 0x0048F957: 'edx', 0x0048F9CA: 'ecx',
+    0x00491427: 'ecx', 0x004914AE: 'edx', 0x0049151E: 'ecx',
+    0x00491B4C: 'ecx', 0x00491BD7: 'edx', 0x00491C4A: 'ecx',
+}
+for _va, _r in REL_W.items():
+    PATCHES[_va] = '{ extern uint32_t tpw_rel_w(uint32_t); %s = tpw_rel_w(%s); }' % (_r, _r)
 
 # pcrecomp's CPUID asks the host CPU, and only under MSVC; on an arm64 Mac it
 # leaves the registers as they were and the game finds no MMX ("Theme Park

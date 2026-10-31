@@ -158,3 +158,51 @@ process. Diagnostics: `SDEMU_HIST`, `SDEMU_PROGRESS`, `SDEMU_SAMPLE`,
 `SDEMU_MS_PER_CALL`, `SDEMU_POKE` (`at@addr=value`), `SDEMU_SECDRV_CHILD`
 (`cmd=value` for children), `SDEMU_TRACE_MAX`; 1000 faults at one address
 stop the run.
+
+## Widescreen: what is known
+
+- **Screen size**: one switch sets the width (`0x7A1968`) and height
+  (`0x7A1930`); all its paths meet at `0x44A156`, where `run_lift.py`
+  patches in `--resolution WxH`.
+- **Rendering**: vertices are transformed to clip space, then
+  `sub_00579690` divides by `w` and maps to the screen with the render
+  state's viewport (`0x8BCBC8` block: x scale `[0x8BCC00]`, y scale
+  `[0x8BCC04]`, centre `[0x8BCBF0]`/`[0x8BCBF4]`), set by `0x582EB0` from
+  the screen size: half the width, half the height. The render state also
+  keeps the aspect `H/W` (`[0x8BCBCC]`).
+- **The world** widens correctly: its frustum (`sub_0056B790`, from a field
+  of view) and its billboards (`0x586274`) divide or multiply by that
+  aspect. One camera object, always set up with the real aspect.
+- **The HUD** is laid out in a virtual 2048x1536 screen and mapped to the
+  real one per axis, so at widescreen it stretches sideways by
+  `(W/H)/(4/3)`. Fixed in `src/host/widescreen.c`, by squeezing each piece
+  back by `k = (4/3)(H/W)` towards its edge (left, centre or right):
+  - **Widgets.** The GUI library (`0x659000`-`0x66F000`, debug-built,
+    `ebp` frames) makes every widget through one constructor,
+    `sub_0065BCAD(parent, flags, id, l, t, r, b)`, with absolute
+    rectangles. A screen-sized widget is a layer; a widget on a layer
+    starts a group anchored by its centre; its children share the anchor.
+    Drawing, text and the mouse's hit tests all read these rectangles.
+  - **Layout tables.** Screens are built from tables of int16s in the exe
+    (the park HUD's at `0x752940`) by `sub_0065FD58`, a switch on tags:
+    0 a child widget, 3 its text rectangle (the date's), 5 hit shapes
+    (rectangle, circle, polygon), 10 an area, 11 list columns as
+    left/right pairs. Readers: `0x65FC38` (rect), `0x65FCC5` (point),
+    `0x65FC18` (short). Calls push a dummy return address, so the patches
+    sit after each read in the builder.
+  - **Offsets.** HUD text classes (`0x48F830`, and copies at `0x491300`,
+    `0x491AB0`) place text at `[esi+0xDE] * width >> 11` from their
+    element; those loads get the 4:3 width.
+  - **Free models.** The advisor and a ride's preview are 3D models drawn
+    straight in screen space (`w = 1` at `sub_00579690`), not fitted to a
+    widget, scaled per axis by code not yet found. Widget-fitted models
+    (`sub_00476C50` fits a model's box to a rectangle) and text sit flat
+    on depth layers `z = 1 - d/40`; anything else in screen space is
+    grouped by overlapping depth and squeezed at the projection.
+- **Not done**: a hit circle keeps its radius, so round buttons accept
+  clicks a little wider than they are drawn; loading screens and movies
+  still stretch to the width (movies sized at `0x51B0ED`); widgets made
+  before a resolution change keep the old squeeze.
+- **Tried and dropped**: squeezing all `w = 1` geometry at the projection
+  (pixel-sized text detaches), and giving the GUI a 4:3 width at
+  `0xFAA5C4` (absolute positions then crowd to the left).

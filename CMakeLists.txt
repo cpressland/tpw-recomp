@@ -31,7 +31,7 @@ set(HLE ${PCRECOMP}/runtime/win32hle)
 file(GLOB HLE_SOURCES CONFIGURE_DEPENDS "${HLE}/*.c")
 list(FILTER HLE_SOURCES EXCLUDE REGEX "_selftest\\.c$")
 
-add_executable(tpw src/host/main.c src/host/cpu.c src/host/qmixer.c src/host/script.c src/host/shims.c ${HLE_SOURCES} ${GEN_SOURCES})
+add_executable(tpw src/host/main.c src/host/cpu.c src/host/qmixer.c src/host/script.c src/host/shims.c src/host/widescreen.c ${HLE_SOURCES} ${GEN_SOURCES})
 target_include_directories(tpw PRIVATE src/host ${GEN_DIR} ${HLE} ${PCRECOMP}/runtime/recomp32)
 target_compile_definitions(tpw PRIVATE RECOMP_RETADDR=0u RECOMP_LOCAL_REGS)
 if(CMAKE_SIZEOF_VOID_P EQUAL 4)
