@@ -103,16 +103,30 @@ for _va, _offs in LAYOUT_X.items():
     PATCHES[_va] = ('{ extern void tpw_layout_x(uint32_t, uint32_t); %s }'
                     % ' '.join('tpw_layout_x(MEM32(ebp - 0xA0), ebp - 0x%X);' % o for o in _offs))
 
-# HUD text placed at an offset from its element ([esi+0xDE]) times the
-# GUI's width: three copies of one routine. The register just loaded with
-# the width gets the 4:3 width instead.
+# Widths in pixels made virtual by the GUI's width, for widgets the squeeze
+# narrows again: HUD text placed at an offset from its element ([esi+0xDE])
+# times the width, three copies of one routine; and the pause menu's lines
+# (Esc in a park), each as wide as its text measures (sub_00492F60). The
+# register just loaded with the width gets the 4:3 width instead. Not the
+# mouse's conversions (0x486C75, 0x48A68E): those are places on the screen.
 REL_W = {
     0x0048F8CC: 'ecx', 0x0048F957: 'edx', 0x0048F9CA: 'ecx',
     0x00491427: 'ecx', 0x004914AE: 'edx', 0x0049151E: 'ecx',
     0x00491B4C: 'ecx', 0x00491BD7: 'edx', 0x00491C4A: 'ecx',
+    0x00492FD8: 'ecx',
 }
 for _va, _r in REL_W.items():
     PATCHES[_va] = '{ extern uint32_t tpw_rel_w(uint32_t); %s = tpw_rel_w(%s); }' % (_r, _r)
+
+# The GUI's mouse (sub_0065889C sets it, sub_006588EF moves it), in its
+# virtual 2048x1536: past 2048 pixels wide (or 1536 high) the last pixel
+# comes out 2047 (1535), outside the full-screen layers, which end there.
+# The park's view is one, so the right edge did not scroll (nor would the
+# original's at 2048x1536). After each one's mov ebp, esp: its x and y kept
+# inside.
+for _va in (0x0065889D, 0x006588F0):
+    PATCHES[_va] = ('{ int16_t x_ = (int16_t)MEM32(ebp + 8), y_ = (int16_t)MEM32(ebp + 0xC); '
+                    'if (x_ > 2046) MEM32(ebp + 8) = 2046; if (y_ > 1534) MEM32(ebp + 0xC) = 1534; }')
 
 # pcrecomp's CPUID asks the host CPU, and only under MSVC; on an arm64 Mac it
 # leaves the registers as they were and the game finds no MMX ("Theme Park
