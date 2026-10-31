@@ -118,6 +118,14 @@ REL_W = {
 for _va, _r in REL_W.items():
     PATCHES[_va] = '{ extern uint32_t tpw_rel_w(uint32_t); %s = tpw_rel_w(%s); }' % (_r, _r)
 
+# Picking (sub_0045BF90): the ray under the mouse is made from the view's
+# corners, built for a 4:3 view (atan2(0.75, 1) at 0x45C09A), and the mouse
+# as a fraction across them, x / width. Wider than 4:3 the picked spot was
+# pulled towards the middle, to (4/3) / (width / height) of the way out (the
+# grass beside a ride picked the ride, at 21:9). The fraction is widened
+# about the middle by as much, after its fdivr (tpw_pick_scale).
+PATCHES[0x0045C1CA] = '{ extern double tpw_pick_scale(void); _st[0] = 0.5 + (_st[0] - 0.5) * tpw_pick_scale(); }'
+
 # The GUI's mouse (sub_0065889C sets it, sub_006588EF moves it), in its
 # virtual 2048x1536: past 2048 pixels wide (or 1536 high) the last pixel
 # comes out 2047 (1535), outside the full-screen layers, which end there.

@@ -227,3 +227,9 @@ int32_t tpw_circle_dx(uint32_t circle, int32_t dx) {
     float k = squeeze();
     return !a || *a == -2 || k == 1.0f ? dx : (int32_t)lroundf((float)dx / k);
 }
+
+/* Picking (sub_0045BF90): how much wider than a 4:3 view this one is. */
+double tpw_pick_scale(void) {
+    uint32_t w = MEM32(SCREEN_W), h = MEM32(SCREEN_H);
+    return w && h ? 0.75 * (double)w / (double)h : 1.0;
+}

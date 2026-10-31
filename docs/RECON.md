@@ -212,18 +212,21 @@ stop the run.
   by `sub_00587130`; the host draws them instead. Movies take their size
   from the screen at `0x51B0ED` (width `0x802460`, x `0x802458` when one is
   given), and get the 4:3 width there.
-- **Not found yet: picking.** Wider than 4:3, what the mouse picks in the
-  park is pulled towards the middle, by about (4/3) / (width / height) (at
-  3440x1440 a click on the grass at x 344 opened the ride drawn at x 963;
-  at 1440x1080 the same ride opens where it is drawn). The cursor itself is
-  drawn where the mouse is. Ruled out: the GUI's mouse (its virtual
-  2048x1536 is right; `sub_0065889C`/`sub_006588EF`), the ray from the mouse
-  in `sub_005DC860` (it does not run on a click), the park view's mouse
-  entries (`sub_0046C2A0` as it moves, `sub_0046C330` on a click, from
-  `0x488540`: widening their x changed nothing), and the mouse as -1..1 that
-  `sub_00532BE0` stores for drawing's sprite picking (`[0x8BD4F0]`, read at
-  `0x58928B`: widening it changed nothing for a ride). Hovering brings in no
-  new functions, so the picking runs every frame.
+- **Picking.** What the mouse is over in the park is found by
+  `sub_0045BF90`: a ray from the view's corners, built for a 4:3 view
+  (`atan2(0.75, 1)`, `[0x6FE640]`, at `0x45C09A`), through the mouse as a
+  fraction across them, `x / (2 * [0x7A0C9C])` and `y / (2 * [0x7A162C])`
+  (half the screen's width and height). Its results: the point under the
+  mouse (`[0x79E248]`) and what is there (`[0x7A1CD4]`, a ride's object, or
+  0). The mouse comes in as pixels, as floats (`[0x790AC8]`, `[0x790ACC]`,
+  from the GUI's virtual mouse at `0x42A855`). Wider than 4:3 the picked
+  spot was pulled towards the middle by (4/3) / (width / height); the
+  fraction across is widened about the middle by as much (`run_lift.py`,
+  `tpw_pick_scale`). Swept at 3440x1440, a ride is picked where it is drawn,
+  across and down. Only putting the real aspect in place of the 0.75 got
+  part of the way (0.665 of the way out), the corners being 4:3 in more
+  than their angle. Found by diffing the game's data with the mouse over a
+  ride, then over grass, then over the ride again.
 - **Open, seen in play, not yet reproduced here**: a lightning strike in a
   park flashes the whole screen purple for a moment (on Metal, at
   3440x1440). A sampler looking for a purple frame every 20 ms found none in
