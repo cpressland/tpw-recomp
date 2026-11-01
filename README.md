@@ -50,6 +50,7 @@ game wouldn't get past a park's loading screen or respond to the mouse.
 | [#160](https://github.com/sp00nznet/pcrecomp/pull/160) | `win32hle-gdi-lfwidth` | A font's `lfWidth` squeezes or stretches its text | **Yes.** Without it the ride-sign fitting loop never ends and a park never loads. |
 | [#161](https://github.com/sp00nznet/pcrecomp/pull/161) | `win32hle-mouse-confine` | The mouse held inside the picture while the window has focus (Ctrl+Cmd lets go) | **Yes.** The host calls its `hle_screen_confine`; without it the build fails, and the pointer escapes the window. |
 | [#163](https://github.com/sp00nznet/pcrecomp/pull/163) | `win32hle-metal` | Direct3D on the GPU through Metal | **Yes.** The host builds `d3d_metal.m` and calls `hle_d3d_metal_enable`; without it the build fails. |
+| [#164](https://github.com/sp00nznet/pcrecomp/pull/164) | `win32hle-dsound-cursor` | DirectSound's play cursor moves smoothly between mixes | No, but recommended. Without it the intro movies lose a third of a second of sound, now and then. |
 | [#158](https://github.com/sp00nznet/pcrecomp/pull/158) | `win32hle-dx6-followups` | DirectDraw 4 review follow-ups (resized textures, attached z-buffers, uniqueness values) | No. Correctness fixes from #154's review; TPW runs without them. |
 
 To build against them, merge the needed branches into a local branch of
@@ -63,7 +64,7 @@ cd ../pcrecomp
 git remote add cpressland https://github.com/cpressland/pcrecomp
 git fetch origin && git fetch cpressland
 git switch -c tpw-local origin/main
-git merge --no-edit cpressland/win32hle-dinput cpressland/win32hle-gdi-lfwidth cpressland/win32hle-mouse-confine
+git merge --no-edit cpressland/win32hle-dinput cpressland/win32hle-gdi-lfwidth cpressland/win32hle-mouse-confine cpressland/win32hle-dsound-cursor
 git merge --no-edit cpressland/win32hle-metal    # keep both README rows, then:
 git add runtime/win32hle/README.md && git commit --no-edit
 ```
