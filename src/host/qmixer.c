@@ -52,6 +52,7 @@ typedef struct {
     uint32_t va;                          /* the handle the game holds: a block of guest memory */
     int channels, bits, rate;
     uint32_t block, callback, user, buf;  /* the stream: block size, callback, its user data, a guest buffer */
+    uint32_t length;                      /* bytes the sound is (from the game's sound object), 0 unknown */
 } wave_t;
 
 typedef struct {
@@ -68,6 +69,7 @@ typedef struct {
     int puller_live;                      /* its puller thread exists */
     int busy;                             /* the puller is between taking a wave and letting it go */
     uint32_t pulled;                      /* bytes of the wave so far */
+    uint32_t played;                      /* ...and of those, played */
     wave_t own;                           /* a spare's: the format of the tail it plays (the wave may go) */
     pthread_cond_t wake;
 } chan_t;
@@ -210,6 +212,7 @@ static void mix(int16_t *out, int frames) {
                 int have = ring_used(c) / fb;
                 if (whole > have) whole = have;
                 c->head = (c->head + whole * fb) % RING;
+                c->played += (uint32_t)(whole * fb);
             }
         }
     }
@@ -304,6 +307,11 @@ static void q_QSWaveMixOpenWaveEx(void) {                /* (session, params, fl
     wave_t *w = (wave_t *)calloc(1, sizeof *w);
     w->channels = MEM16(fmt + 2), w->rate = (int)MEM32(fmt + 4), w->bits = MEM16(fmt + 14);
     w->block = MEM32(p + 4), w->callback = MEM32(p + 8), w->user = MEM32(p + 12);
+    /* The user data is the game's sound object (sub_006BB4F0's), which keeps
+     * a copy of the sound's header from its bank (.sdt: the header's size,
+     * the MP2 data's, its name, its format, then the decoded length), from
+     * +0x3C: the length is at +0x5C. */
+    if (w->user && MEM32(w->user + 0x3C) == 0x28 && MEM32(w->user + 0x5C) < (1u << 28)) w->length = MEM32(w->user + 0x5C);
     if (MEM16(fmt) != 1 || (w->bits != 8 && w->bits != 16) || w->channels < 1 || w->channels > 2 ||
         !w->block || w->block > RING / 4) {
         T("OpenWaveEx: format %u, %d-bit, %d channels, block %u: not answered\n", MEM16(fmt), w->bits, w->channels, w->block);
@@ -318,7 +326,7 @@ static void q_QSWaveMixOpenWaveEx(void) {                /* (session, params, fl
     pthread_mutex_unlock(&g_mu);
     if (slot < 0) { free(w); RET(0, 3); }
     MEM32(w->va) = (uint32_t)slot;
-    T("OpenWaveEx: stream %d Hz, %d-bit, %d ch, %u-byte blocks, callback %08X user %08X -> %08X\n", w->rate, w->bits, w->channels, w->block, w->callback, w->user, w->va);
+    T("OpenWaveEx: stream %d Hz, %d-bit, %d ch, %u-byte blocks, %u bytes long, callback %08X user %08X -> %08X\n", w->rate, w->bits, w->channels, w->block, w->length, w->callback, w->user, w->va);
     RET(w->va, 3);
 }
 static wave_t *wave_of(uint32_t va) {
@@ -326,33 +334,47 @@ static wave_t *wave_of(uint32_t va) {
     uint32_t slot = MEM32(va);
     return slot < MAX_WAVES && g_waves[slot] && g_waves[slot]->va == va ? g_waves[slot] : NULL;
 }
-/* The game counts a sound done once its decoder has given the last block,
- * which the mixer asks for before it has played what it holds, and sets the
- * channel up for another, frees the wave, or plays another there: a line of
- * speech pulled 6 s ahead lost all but its first three seconds of nine. A
- * tail like that, all given and still sounding, goes on in a channel the
- * game has not opened, to its end, with its own volume and place. */
+/* The game counts a sound done once its decoder has given all of it, which
+ * the mixer asks for before it has played what it holds, and then stops the
+ * channel, sets it up for another, frees the wave, or plays another there:
+ * QMixer asks for a block only just before playing it, so for the game given
+ * is played. Here the last half second or so of most sounds was cut (a line
+ * of speech, a ride's), and when the game was let pull ahead, all but the
+ * first three seconds of a nine-second line. A sound given whole (to the end
+ * of its stream, or to its length) and still sounding goes on in a channel
+ * the game has not opened, to its end, with its own volume and place; the
+ * blocks the game gives after the sound's length are padding, left out. */
+static int given_whole(const chan_t *c) {
+    return c->wave && (c->eof || (c->wave->length && c->pulled >= c->wave->length));
+}
 static void hand_tail(chan_t *c) {
     pthread_mutex_lock(&g_mu);
+    const wave_t *w = c->wave;
+    int n = w && given_whole(c) ? ring_used(c) : 0;
+    if (n && w->length) {
+        int fb = w->bits / 8 * w->channels;
+        int rest = c->played < w->length ? (int)((w->length - c->played) / (uint32_t)fb) * fb : 0;
+        if (rest < n) n = rest;
+    }
     chan_t *s = NULL;
-    for (int i = NCHAN - 1; i >= 0 && !s; i--) if (!g_ch[i].open && !g_ch[i].playing) s = &g_ch[i];
+    for (int i = NCHAN - 1; i >= 0 && n > 0 && !s; i--) if (!g_ch[i].open && !g_ch[i].playing) s = &g_ch[i];
     if (s) {
-        int n = ring_used(c);
-        s->own = *c->wave, s->wave = &s->own;
+        s->own = *w, s->wave = &s->own;
         for (int i = 0; i < n; i++) s->ring[i] = c->ring[(c->head + i) % RING];
         s->head = 0, s->tail = n, s->frac = c->frac;
         s->volume = c->volume, s->freq = c->freq, s->pos = c->pos, s->has_pos = c->has_pos;
-        s->eof = 1, s->paused = 0, s->playing = 1;
-        T("%.1fs channel %d: its last %.1f s go on in channel %d (volume %.2f, %s)\n", hle_ticks_ms() / 1000.0 - g_t0,
-          (int)(c - g_ch), n / (double)(c->wave->rate * c->wave->channels * (c->wave->bits / 8)), (int)(s - g_ch),
+        s->eof = 1, s->paused = 0, s->playing = 1, s->pulled = c->pulled, s->played = c->played;
+        T("%.1fs channel %d: its last %.2f s go on in channel %d (volume %.2f, %s)\n", hle_ticks_ms() / 1000.0 - g_t0,
+          (int)(c - g_ch), n / (double)(w->rate * w->channels * (w->bits / 8)), (int)(s - g_ch),
           c->volume, c->has_pos ? "3D" : "2D");
     }
     pthread_mutex_unlock(&g_mu);
 }
 /* The game sets a channel up (volume, place, frequency) for its next sound
- * before playing it there: a tail still sounding goes on first, as it was. */
+ * before playing it there: a sound given whole and still sounding goes on
+ * first, as it was. */
 static void before_setup(chan_t *c) {
-    if (!c || !c->wave || !c->eof || !ring_used(c)) return;
+    if (!c || !given_whole(c)) return;
     hand_tail(c);
     stop_channel(c);
 }
@@ -362,7 +384,7 @@ static void q_QSWaveMixFreeWave(void) {                  /* (session, wave) */
         for (int i = 0; i < NCHAN; i++) {
             chan_t *c = &g_ch[i];
             if (c->wave != w) continue;
-            if (c->eof && ring_used(c)) hand_tail(c);
+            hand_tail(c);
             stop_channel(c);
         }
         pthread_mutex_lock(&g_mu);
@@ -378,14 +400,14 @@ static void q_QSWaveMixPlayEx(void) {                    /* (session, channel, f
     chan_t *c = chan(A32(1));
     wave_t *w = wave_of(A32(3));
     if (!c || !w) RET(MMSYSERR_ERROR, 6);
-    if (c->wave && c->eof && ring_used(c)) hand_tail(c);
+    hand_tail(c);
     stop_channel(c);
     pthread_mutex_lock(&g_mu);
     if (!c->puller_live) {
         pthread_cond_init(&c->wake, NULL);
         if (pthread_create(&c->puller, NULL, puller, c) == 0) pthread_detach(c->puller), c->puller_live = 1;
     }
-    c->wave = w, c->playing = 1, c->paused = 0, c->eof = 0, c->head = c->tail = 0, c->frac = 0, c->pulled = 0;
+    c->wave = w, c->playing = 1, c->paused = 0, c->eof = 0, c->head = c->tail = 0, c->frac = 0, c->pulled = c->played = 0;
     pthread_cond_signal(&c->wake);
     pthread_mutex_unlock(&g_mu);
     T("%.1fs PlayEx channel %u flags %X wave %08X\n", hle_ticks_ms() / 1000.0 - g_t0, A32(1), A32(2), A32(3));
@@ -394,9 +416,9 @@ static void q_QSWaveMixPlayEx(void) {                    /* (session, channel, f
 static void q_QSWaveMixStopChannel(void) {               /* (session, channel, flags) */
     if (A32(2) & 1) { for (int i = 0; i < NCHAN; i++) stop_channel(&g_ch[i]); RET(0, 3); }   /* QMIX_ALL */
     chan_t *c = chan(A32(1));
-    if (c && c->playing && (!c->eof || ring_used(c)) && trace())
-        T("channel %u: stopped, %u bytes in, %d left unplayed\n", A32(1), c->pulled, ring_used(c));
-    if (c) stop_channel(c);
+    if (c && c->playing && !given_whole(c) && trace())
+        T("channel %u: stopped, %u of %u bytes given, %u played\n", A32(1), c->pulled, c->wave ? c->wave->length : 0, c->played);
+    if (c) hand_tail(c), stop_channel(c);
     RET(0, 3);
 }
 static void q_QSWaveMixPauseChannel(void) {

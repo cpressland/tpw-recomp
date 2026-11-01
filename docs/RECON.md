@@ -159,6 +159,32 @@ process. Diagnostics: `SDEMU_HIST`, `SDEMU_PROGRESS`, `SDEMU_SAMPLE`,
 (`cmd=value` for children), `SDEMU_TRACE_MAX`; 1000 faults at one address
 stop the run.
 
+## Sound: the banks and QMixer
+
+- **Banks** (`*.sdt`, `Data\global\Speech\speechHD.SDT` and the rest:
+  speech, music, rides, ambience, guests): a count, a table of offsets,
+  then each sound: a 0x28-byte header (its size, the data's size, a
+  16-byte name like `sp_471.mp2`, the rate as a u16, the bits, a byte, the
+  decoded length in bytes at +0x20) and MPEG-2 layer II data. 641 lines of
+  speech, all 22050 Hz mono.
+- **Playing one**: the game decodes the MP2 on a thread of its own, a
+  9216-byte block at a time, and gives QMixer every sound as an input stream
+  (`OpenWaveEx` type 0x11) whose callback, `sub_006BB4F0` with the sound
+  object as its user data, waits up to 500 ms for the decoded block, copies
+  it and wakes the decoder for the next (on a timeout it gives silence). The
+  sound object keeps a copy of the bank header from +0x3C, so the length is
+  at +0x5C. `sub_006D2380` plays one: `ConfigureChannel`, `OpenWaveEx`,
+  `FreeWave` of the channel's last wave, `PlayEx` with flags 0x20 and no
+  play parameters, so no notice comes back when a sound ends.
+- **When a sound ends** the game knows only from its decoder: once it has
+  given all of it, the game stops the channel, sets it up for another, frees
+  the wave or plays another there. QMixer asks for a block just before
+  playing it, so on Windows that is the sound's end. A mixer that asks
+  further ahead (`src/host/qmixer.c` keeps 4 blocks, 0.8 s, to ride out the
+  decoder) cuts the end off: in 7 minutes of a park, 651 sounds (speech,
+  rides) lost up to half a second. The host plays what is left of a sound
+  given whole, up to its length, in a channel the game has not opened.
+
 ## Widescreen: what is known
 
 - **Screen size**: one switch sets the width (`0x7A1968`) and height
