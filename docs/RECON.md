@@ -184,6 +184,23 @@ stop the run.
   decoder) cuts the end off: in 7 minutes of a park, 651 sounds (speech,
   rides) lost up to half a second. The host plays what is left of a sound
   given whole, up to its length, in a channel the game has not opened.
+  - The stream begins with silence: a whole block (9216 bytes, 0.21 s)
+    for speech, a few hundred bytes for most else, so a sound ends that
+    much after its length. Cut at the length itself, the last 0.2 s of each
+    line was still lost. Found by dumping the blocks the game gives and
+    lining them up with the line decoded by ffmpeg (a constant 210 ms
+    late); checked by recording speech alone and finding each line's last
+    half second in it.
+  - Music loops (its decoder goes back to the start) and goes on past its
+    length; what follows a line of speech is not silence either, so the
+    two cannot be told apart by the data. A loop the game stops has played
+    past its length, so nothing of it is handed on.
+  - Only the game's own stops, frees and replays hand a sound on. The game
+    moves and fades sounds it still plays (`SetSourcePosition`,
+    `SetVolume`); stopping a channel there, under a sound the game still
+    streams, left its sound object half way through and crashed the
+    game's decoder thread (`0x6BB5E0`, a stream's reader freed) as a park
+    loaded.
 
 ## Widescreen: what is known
 

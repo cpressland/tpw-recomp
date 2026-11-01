@@ -70,6 +70,8 @@ typedef struct {
     int busy;                             /* the puller is between taking a wave and letting it go */
     uint32_t pulled;                      /* bytes of the wave so far */
     uint32_t played;                      /* ...and of those, played */
+    uint32_t quiet;                       /* the silence the wave began with, in bytes */
+    int sounded;                          /* ...and whether it has ended */
     wave_t own;                           /* a spare's: the format of the tail it plays (the wave may go) */
     pthread_cond_t wake;
 } chan_t;
@@ -122,6 +124,7 @@ static void *puller(void *arg) {
                                    c->pulled / (double)(w->rate * w->channels * (w->bits / 8)), took);
         const uint8_t *src = (const uint8_t *)hle_ptr(w->buf);
         for (uint32_t i = 0; i < w->block; i++) c->ring[(c->tail + (int)i) % RING] = src[i];
+        for (uint32_t i = 0; i < w->block && !c->sounded; i++, c->quiet++) if (src[i]) c->sounded = 1;
         c->tail = (c->tail + (int)w->block) % RING;
         if (!more) c->eof = 1;
     }
@@ -342,10 +345,14 @@ static wave_t *wave_of(uint32_t va) {
  * of speech, a ride's), and when the game was let pull ahead, all but the
  * first three seconds of a nine-second line. A sound given whole (to the end
  * of its stream, or to its length) and still sounding goes on in a channel
- * the game has not opened, to its end, with its own volume and place; the
- * blocks the game gives after the sound's length are padding, left out. */
+ * the game has not opened, to its end, with its own volume and place; what
+ * the game gives after the sound's length is left out. The game's stream
+ * begins with a block of silence, so the sound ends that much after its
+ * length: the silence each wave begins with is counted. A loop (music, whose
+ * decoder goes back to the start) has played past its length by the time the
+ * game stops it, so nothing of it goes on. */
 static int given_whole(const chan_t *c) {
-    return c->wave && (c->eof || (c->wave->length && c->pulled >= c->wave->length));
+    return c->wave && (c->eof || (c->wave->length && c->pulled >= c->quiet + c->wave->length));
 }
 static void hand_tail(chan_t *c) {
     pthread_mutex_lock(&g_mu);
@@ -353,7 +360,8 @@ static void hand_tail(chan_t *c) {
     int n = w && given_whole(c) ? ring_used(c) : 0;
     if (n && w->length) {
         int fb = w->bits / 8 * w->channels;
-        int rest = c->played < w->length ? (int)((w->length - c->played) / (uint32_t)fb) * fb : 0;
+        uint32_t end = c->quiet + w->length;
+        int rest = c->played < end ? (int)((end - c->played) / (uint32_t)fb) * fb : 0;
         if (rest < n) n = rest;
     }
     chan_t *s = NULL;
@@ -364,6 +372,7 @@ static void hand_tail(chan_t *c) {
         s->head = 0, s->tail = n, s->frac = c->frac;
         s->volume = c->volume, s->freq = c->freq, s->pos = c->pos, s->has_pos = c->has_pos;
         s->eof = 1, s->paused = 0, s->playing = 1, s->pulled = c->pulled, s->played = c->played;
+        s->quiet = c->quiet, s->sounded = 1;
         T("%.1fs channel %d: its last %.2f s go on in channel %d (volume %.2f, %s)\n", hle_ticks_ms() / 1000.0 - g_t0,
           (int)(c - g_ch), n / (double)(w->rate * w->channels * (w->bits / 8)), (int)(s - g_ch),
           c->volume, c->has_pos ? "3D" : "2D");
@@ -371,10 +380,12 @@ static void hand_tail(chan_t *c) {
     pthread_mutex_unlock(&g_mu);
 }
 /* The game sets a channel up (volume, place, frequency) for its next sound
- * before playing it there: a sound given whole and still sounding goes on
- * first, as it was. */
+ * before playing it there: a sound whose stream has ended and still sounding
+ * goes on first, as it was. One given to its length but whose stream goes on
+ * is left alone: the game moves and fades sounds it still plays, and a
+ * channel stopped under it leaves its sound object half way through. */
 static void before_setup(chan_t *c) {
-    if (!c || !given_whole(c)) return;
+    if (!c || !c->wave || !c->eof) return;
     hand_tail(c);
     stop_channel(c);
 }
@@ -407,7 +418,7 @@ static void q_QSWaveMixPlayEx(void) {                    /* (session, channel, f
         pthread_cond_init(&c->wake, NULL);
         if (pthread_create(&c->puller, NULL, puller, c) == 0) pthread_detach(c->puller), c->puller_live = 1;
     }
-    c->wave = w, c->playing = 1, c->paused = 0, c->eof = 0, c->head = c->tail = 0, c->frac = 0, c->pulled = c->played = 0;
+    c->wave = w, c->playing = 1, c->paused = 0, c->eof = 0, c->head = c->tail = 0, c->frac = 0, c->pulled = c->played = c->quiet = 0, c->sounded = 0;
     pthread_cond_signal(&c->wake);
     pthread_mutex_unlock(&g_mu);
     T("%.1fs PlayEx channel %u flags %X wave %08X\n", hle_ticks_ms() / 1000.0 - g_t0, A32(1), A32(2), A32(3));
