@@ -251,16 +251,18 @@ stop the run.
   - So the flash is something a real storm does that a lone strike does
     not, or the sky or fog in a storm. Next: a park with a storm, or a save
     made during one.
-- **Open**: the first second of the Bullfrog animation and the intro movie
-  clips (heard in play). Their sound is not QMixer's (its mix is silent for
-  the first seconds; the one stream it plays then, at 0.0 s, is empty) but
-  DirectSound's: a looping buffer the movie player writes into as the play
-  cursor moves (pcrecomp's `dsound.c` mixes it on SDL's audio thread in real
-  time). Clipping only at the start suggests the game falling behind with
-  its writes while it starts up: the device starting, Metal making its
-  first pipelines, the first flip waiting for its own frame. To check:
-  count the play cursor passing the last write in `dsound.c`, and compare
-  `--renderer software`.
+- **Movie sound skipping** (fixed in pcrecomp's `dsound.c`): the Bullfrog
+  animation and the startup movie lost sound in their first seconds. Their
+  sound is DirectSound's, not QMixer's: a looping 32 KB buffer (22050 Hz,
+  stereo, 371 ms) the movie player refills a video frame at a time (about
+  2912 bytes) as the play cursor leaves its write position. The mixer moved
+  the cursor a callback at a time (23 ms), so the two could be exactly
+  equal; the player took that for an empty buffer and wrote a lap ahead,
+  over sound not yet played, and a whole lap (371 ms) was lost. Recording
+  the mix and lining it up with the movie's own audio (`ffmpeg -i
+  Data\Movies\bf.tgq`, EA ADPCM) showed two such jumps in the Bullfrog
+  animation's first 4 s. The cursor now moves between callbacks with the
+  time, as a sound card's does, and both movies play through whole.
 - **Tried and dropped**: squeezing all `w = 1` geometry at the projection
   (pixel-sized text detaches), and giving the GUI a 4:3 width at
   `0xFAA5C4` (absolute positions then crowd to the left).
