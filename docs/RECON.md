@@ -227,13 +227,30 @@ stop the run.
   part of the way (0.665 of the way out), the corners being 4:3 in more
   than their angle. Found by diffing the game's data with the mouse over a
   ride, then over grass, then over the ride again.
-- **Open, seen in play, not yet reproduced here**: a lightning strike in a
-  park flashes the whole screen purple for a moment (on Metal, at
-  3440x1440). A sampler looking for a purple frame every 20 ms found none in
-  five minutes of a park or on the menu's storm island (Metal and software),
-  so it needs a storm to look at. The weather's settings are
-  `LightningTime`, `LightningCountdownFrom` and the like; the bolt is
-  `Data\Generic\Weather\lightning.tga` (loaded at `0x57D8C8`).
+- **Open, seen in play, not reproduced here**: a lightning strike in a
+  park flashed the whole screen purple for a moment (Metal, 3440x1440).
+  What is known of lightning:
+  - The weather (`0x512AE8`) counts `+0x3C` down and adds a strike to the
+    weather renderer (`[0x8BCBAC]`) with `sub_00580320`: up to 16, 48 bytes
+    each at `+0x3008` (top, bottom, the direction between, a countdown at
+    `+0x24`, a random seed for the bolt's shape at `+0x2C`), the count at
+    `+0x3308`. Nothing else: no flash of the screen or the fog; later, the
+    thunder.
+  - `sub_0057EE30` counts each down and gives the bolt a grey colour
+    (`+0xA19C`, r = g = b); `sub_0057EC50` draws it in screen space (FVF
+    0x1C4), from a sub-rectangle of the texture holding
+    `Data\Generic\Weather\lightning.tga` (a white bolt in a blue glow).
+  - Strikes put into that queue by hand, every 3 s at the point under the
+    mouse, draw as they should on Metal at 1024x768 and 3440x1440, and a
+    sampler looking for a frame much brighter or more purple than the one
+    before found none of them purple.
+  - Forcing storms in `Data\levels\Standard.sam` (`QualityForLightning*`
+    wider than 0-15, with or without rain) crashes the game itself as a
+    park loads (`sub_00463AB0`, reading near 0); only the countdown can be
+    changed safely.
+  - So the flash is something a real storm does that a lone strike does
+    not, or the sky or fog in a storm. Next: a park with a storm, or a save
+    made during one.
 - **Open**: the first second of the Bullfrog animation and the intro movie
   clips (heard in play; not looked into).
 - **Tried and dropped**: squeezing all `w = 1` geometry at the projection
