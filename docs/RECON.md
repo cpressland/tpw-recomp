@@ -252,7 +252,15 @@ stop the run.
     not, or the sky or fog in a storm. Next: a park with a storm, or a save
     made during one.
 - **Open**: the first second of the Bullfrog animation and the intro movie
-  clips (heard in play; not looked into).
+  clips (heard in play). Their sound is not QMixer's (its mix is silent for
+  the first seconds; the one stream it plays then, at 0.0 s, is empty) but
+  DirectSound's: a looping buffer the movie player writes into as the play
+  cursor moves (pcrecomp's `dsound.c` mixes it on SDL's audio thread in real
+  time). Clipping only at the start suggests the game falling behind with
+  its writes while it starts up: the device starting, Metal making its
+  first pipelines, the first flip waiting for its own frame. To check:
+  count the play cursor passing the last write in `dsound.c`, and compare
+  `--renderer software`.
 - **Tried and dropped**: squeezing all `w = 1` geometry at the projection
   (pixel-sized text detaches), and giving the GUI a 4:3 width at
   `0xFAA5C4` (absolute positions then crowd to the left).
