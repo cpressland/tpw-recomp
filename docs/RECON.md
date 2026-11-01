@@ -183,6 +183,11 @@ stop the run.
     rectangles. A screen-sized widget is a layer; a widget on a layer
     starts a group anchored by its centre; its children share the anchor.
     Drawing, text and the mouse's hit tests all read these rectangles.
+    Each screen is a layer (all children of the root widget, id -666); the
+    Options page (id 120000) is one too, but laid out as one full-screen
+    panel, so it is squeezed whole into the middle: anchored by groups, its
+    columns went to the screen's edges and the Videocard row's button
+    (a sibling of its socket, not a child) left the socket behind.
   - **Layout tables.** Screens are built from tables of int16s in the exe
     (the park HUD's at `0x752940`) by `sub_0065FD58`, a switch on tags:
     0 a child widget, 3 its text rectangle (the date's), 5 hit shapes

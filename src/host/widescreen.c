@@ -9,9 +9,9 @@
  *
  * - Widgets (tpw_widget): every GUI widget's rectangle goes through one
  *   constructor. A widget the size of the screen is a layer and is left
- *   alone; a widget on a layer starts a group, anchored by where its centre
- *   is; every widget under it uses its group's anchor, so the group moves
- *   and shrinks as one. Drawing, text placement and the mouse's hit tests all
+ *   alone, but for a page squeezed whole (Options); a widget on a layer
+ *   starts a group, anchored by where its centre is; every widget under it
+ *   uses its group's anchor, so the group moves and shrinks as one. Drawing, text placement and the mouse's hit tests all
  *   read these rectangles, so they follow.
  * - Layout extras (tpw_layout_x): the layout tables also give a widget a
  *   text rectangle, hit shapes (rectangles, circles, polygons) and list
@@ -78,14 +78,19 @@ static int16_t place(int x, int anchor, float k) {
     return (int16_t)lroundf(a + ((float)x - a) * k);
 }
 
+/* A page laid out across the whole screen, by its id, is squeezed whole into
+ * a 4:3 panel in the middle, as it looks at 4:3: the Options page, whose
+ * columns would otherwise go to the screen's edges. */
+static int whole_page(uint32_t id) { return id == 120000; }
+
 /* sub_0065BCAD, the widget constructor, after its push ebp: [sp+8] parent,
- * [sp+0x14..0x20] left, top, right, bottom. */
+ * [sp+0x10] id, [sp+0x14..0x20] left, top, right, bottom. */
 void tpw_widget(uint32_t self, uint32_t sp) {
     int l = (int16_t)MEM32(sp + 0x14), r = (int16_t)MEM32(sp + 0x1C);
     uint32_t parent = MEM32(sp + 8);
     int8_t *pa = parent ? anchor_of(parent, 0) : NULL;
     int anchor;
-    if (r - l >= 1900) anchor = -2;
+    if (r - l >= 1900) anchor = whole_page(MEM32(sp + 0x10)) ? 0 : -2;
     else if (pa && *pa != -2) anchor = *pa;
     else {
         int c = (l + r) / 2;
