@@ -39,7 +39,11 @@ if(TPW_SDL_FRAMEWORKS)
   file(COPY ${SDL_HEADERS} DESTINATION ${SDL_INCLUDE}/SDL2)
   add_library(tpw_sdl INTERFACE)
   target_include_directories(tpw_sdl INTERFACE ${SDL_INCLUDE} ${SDL_INCLUDE}/SDL2)
-  target_link_libraries(tpw_sdl INTERFACE "-F${TPW_SDL_FRAMEWORKS}" "-framework SDL2" "-framework SDL2_ttf")
+  # Found as libraries, so CMake writes the -F and -framework flags itself,
+  # quoted: the folder is in Application Support, a path with spaces.
+  find_library(TPW_SDL2 SDL2 PATHS ${TPW_SDL_FRAMEWORKS} NO_DEFAULT_PATH REQUIRED)
+  find_library(TPW_SDL2_TTF SDL2_ttf PATHS ${TPW_SDL_FRAMEWORKS} NO_DEFAULT_PATH REQUIRED)
+  target_link_libraries(tpw_sdl INTERFACE ${TPW_SDL2} ${TPW_SDL2_TTF})
 else()
   find_package(PkgConfig REQUIRED)
   pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2)
