@@ -318,6 +318,7 @@ int main(int argc, char **argv) {
     char game_full[PATH_MAX], exe_host[PATH_MAX + 16];
     if (!realpath(game, game_full)) { fprintf(stderr, "no game folder at %s\n", game); return 1; }
     hle_set_drive('C', game_full);
+    hle_set_drive('D', game_full);       /* the disc, as a CD-ROM (shims.c) */
     if (!hle_host_path("C:\\" TPW_EXE_NAME, exe_host, sizeof exe_host)) {
         fprintf(stderr, "no " TPW_EXE_NAME " in %s\n", game_full);
         return 1;

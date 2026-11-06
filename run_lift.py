@@ -37,11 +37,8 @@ from lift32 import Lifter                                  # noqa: E402
 from pe_analyze import analyze_pe, build_iat_map           # noqa: E402
 
 EXE = os.path.join(_HERE, 'game', 'TP.EXE')
-WORK = os.path.join(_HERE, 'work', 'tp')
-CATALOG = os.path.join(WORK, 'functions.json')
-SEEDS = os.path.join(WORK, 'rtti_seeds.json')
+WORK = os.path.join(_HERE, 'work', 'tp')      # the analysis's JSON (--work)
 OUT = os.path.join(_HERE, 'src', 'recomp', 'gen')
-STATS = os.path.join(WORK, 'lift_stats.json')
 
 # Sim Theme Park World 2.0, SafeDisc removed (docs/RECON.md), by PE timestamp:
 # unwrapped from the disc by tools/safedisc/unwrap.py (TP.ICD's own stamp), or
@@ -188,17 +185,20 @@ def write_target_header(out, stamp):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--exe', default=EXE)
-    ap.add_argument('--catalog', default=CATALOG)
+    ap.add_argument('--work', default=WORK, help='the analysis: functions.json, rtti*.json, run_seeds.json')
+    ap.add_argument('--catalog', help='default: WORK/functions.json')
     ap.add_argument('--out', default=OUT)
     ap.add_argument('--roots', default='', help='comma-separated extra root VAs')
     ap.add_argument('--max', type=int, default=3000, help='closure size cap')
     ap.add_argument('--all', action='store_true', help='lift every function')
     ap.add_argument('--split', type=int, default=400, help='functions per .c file')
-    ap.add_argument('--seeds', default=os.path.join(WORK, 'run_seeds.json'),
-                    help='seed_from_log.py JSON of unresolved targets from runs')
+    ap.add_argument('--seeds', help='seed_from_log.py JSON of unresolved targets from runs '
+                    '(default: WORK/run_seeds.json)')
     ap.add_argument('--check', action='store_true',
                     help='exit 0 if the lift is current (this lifter, this driver), 1 if not')
     args = ap.parse_args()
+    args.catalog = args.catalog or os.path.join(args.work, 'functions.json')
+    args.seeds = args.seeds or os.path.join(args.work, 'run_seeds.json')
     if args.check:
         try:
             sys.exit(0 if open(os.path.join(args.out, 'lift_stamp.txt')).read().strip()
@@ -227,7 +227,7 @@ def main():
 
     # Vtable slots and run seeds, bounded by the next known entry.
     want = {a for a in RUN_SEEDS if cs <= a < ce and a not in byaddr}
-    for path in (SEEDS, args.seeds):
+    for path in (os.path.join(args.work, 'rtti_seeds.json'), args.seeds):
         if os.path.exists(path):
             want |= {e['address'] for e in json.load(open(path))
                      if cs <= e['address'] < ce and e['address'] not in byaddr}
@@ -341,7 +341,7 @@ def main():
     except ImportError:
         print('[*] names: no tools/lift/name_lift.py in this pcrecomp; functions keep their address names')
     else:
-        rtti_path = os.path.join(WORK, 'rtti.json')
+        rtti_path = os.path.join(args.work, 'rtti.json')
         rtti = json.load(open(rtti_path)) if os.path.exists(rtti_path) else {}
         known_names = {va: 'hook_%s' % hook for va, hook in HOOKS.items()}
         named = name_lift.name_lift(args.out, name_lift.Image(args.exe), rtti, known_names)
@@ -352,7 +352,7 @@ def main():
                 for fn in os.listdir(args.out))
     stats = {'lifted': len(chosen), 'stubs': len(stubs), 'errors': errors,
              'no_terminator': dirty, 'files': idx, 'lines': lines}
-    json.dump(stats, open(STATS, 'w'), indent=1)
+    json.dump(stats, open(os.path.join(args.work, 'lift_stats.json'), 'w'), indent=1)
     write_target_header(args.out, stamp)
     # The game's own DLLs, stubbed (src/host/main.c registers them): generated
     # from the game folder like the lift, so they live beside it, not in git.

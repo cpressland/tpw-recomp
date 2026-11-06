@@ -23,7 +23,9 @@ import zipfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 PCRECOMP = os.environ.get('PCRECOMP', os.path.join(HERE, '..', '..', '..', 'pcrecomp'))
 sys.path.insert(0, os.path.join(HERE, '..', 'safedisc'))
+sys.path.insert(0, os.path.join(HERE, '..', 'disc'))
 
+import cab     # noqa: E402
 import sdemu   # noqa: E402
 import winapi  # noqa: E402
 
@@ -50,18 +52,17 @@ def extract(zip_path, work):
         exe = next(n for n in z.namelist() if n.lower().endswith('.exe'))
         z.extract(exe, work)
     out = os.path.join(work, 'payload')
-    subprocess.run(['7z', 'x', '-y', '-o' + out, os.path.join(work, exe)], check=True,
-                   stdout=subprocess.DEVNULL)
+    cab.extract(os.path.join(work, exe), out)    # the cabinet after the self-extractor
     return out
 
 
 def applier(payload, work):
     """patchw32.dll, from the installer's _user1.cab."""
-    cab = os.path.join(payload, '_user1.cab')
+    user1 = os.path.join(payload, '_user1.cab')
     out = os.path.join(work, 'rtp')
     # pcrecomp's InstallShield 5 reader: the header is in the cabinet itself.
     subprocess.run([sys.executable, '-I', os.path.join(PCRECOMP, 'tools', 'assets', 'isextract.py'),
-                    cab, cab, '-o', out], check=True, stdout=subprocess.DEVNULL)
+                    user1, user1, '-o', out], check=True, stdout=subprocess.DEVNULL)
     return os.path.join(out, 'patchw32.dll')
 
 

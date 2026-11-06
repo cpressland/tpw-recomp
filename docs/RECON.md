@@ -63,9 +63,15 @@ check. It is a plain MSVC image: entry `0x0067EE10` is `_WinMainCRTStartup`.
 The 2000-era no-CD release of the same build (MD5
 `e4c2a8979d1a5d7e705976c1d4d511be`, timestamp rewritten to `0x63732172`) is
 also accepted. Against it, the unwrapped image differs in one byte of code
-(the crack's own patch, `jne` to `jmp` at `0x005AA5AD`, past a CD check our
-host passes anyway), the order of the import tables, and junk in two
-sections' padding.
+(the crack's own patch, `jne` to `jmp` at `0x005AA5AD`, past a CD check), the
+order of the import tables, junk in two sections' padding, and the case of
+the section names (`CSEG` unwrapped, `cseg` in the no-CD release).
+
+The unwrapped game keeps its CD check (`sub_005AA500`): it lists the drives,
+takes those `GetDriveTypeA` calls `DRIVE_CDROM`, and wants one whose volume
+label is the disc's, `TPWORLD`, asking for the CD until it finds it. The host
+answers as a machine with the disc in drive D: (src/host/shims.c), D: being
+the game folder, which has every file from the disc.
 
 | Section  | RVA      | Virtual size |
 |----------|----------|--------------|

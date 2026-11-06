@@ -28,7 +28,7 @@ def main(exe, catalog, out):
     lo, hi = min(a for a, _ in code), max(b for _, b in code)
     seeds = {}
     for s in pe.sections:
-        name = s.Name.rstrip(b'\0').decode()
+        name = s.Name.rstrip(b'\0').decode().lower()     # CSEG unwrapped, cseg in the no-CD release
         if name == '.text':
             continue                       # jump tables inside functions: the lifter's own
         start = s.VirtualAddress
