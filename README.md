@@ -16,6 +16,33 @@ and [docs/RECON.md](docs/RECON.md).
 It needs pcrecomp's `main` (DirectX 6) plus four win32hle changes that are
 still awaiting review upstream; see [pcrecomp: pending merges](#pcrecomp-pending-merges).
 
+## Playing on a Mac
+
+Theme Park World.app needs a Mac with Apple silicon, macOS 26 or later, and
+your own copy of the game: the two downloads below. Nothing of the game is in
+the app. The first time it runs, it builds the game on your Mac from them,
+which takes about ten minutes.
+
+Either paste this into Terminal:
+
+```
+curl -fsSL https://github.com/cpressland/tpw-recomp/releases/latest/download/install.sh | sh
+```
+
+or download `Theme-Park-World.dmg` from the
+[latest release](https://github.com/cpressland/tpw-recomp/releases/latest)
+and drag the app to Applications. The app isn't notarized by Apple, so the
+first time you open a downloaded copy macOS refuses it: open it once, then
+in **System Settings → Privacy & Security** choose **Open Anyway**. The
+Terminal install skips that step.
+
+When it opens, the app asks for the disc image and the patch, and offers to
+install Apple's Command Line Tools if this Mac doesn't have them (the
+compiler; Xcode isn't needed). Then it builds the game and starts it. It
+keeps itself up to date (Sparkle), and when an update needs the game rebuilt
+it does that on its next launch, in a few minutes, without the disc. Your
+parks and saves are kept in `~/Library/Application Support/Theme Park World`.
+
 ## What you need
 
 Nothing from the game is in this repository, and nothing generated from it.
@@ -106,30 +133,43 @@ needed again only if the disc's steps change. Saves are kept.
 
 ### Theme Park World.app
 
-`app/build-app.sh` makes `build-app/Theme Park World.app`, which holds
-nothing of the game: only a small launcher (`app/launcher.m`), its icon and
-`Info.plist`. It loads the game that `install.py` built,
-`build/host/libtpw.dylib` in Application Support, so drag it to
-/Applications and open it like any app:
+`app/build-app.sh` makes `build-app/Theme Park World.app` (about 125 MB):
+the launcher (`app/Launcher`, Swift), the tools to build the game
+(`app/toolchain.sh`: a standalone Python with pefile, capstone, unicorn,
+CMake and Ninja, and SDL2 and SDL2_ttf as frameworks, all pinned by
+checksum), this repository's and pcrecomp's sources
+(`install.py --export-sources`), Sparkle, and a stand-in icon
+(`app/icon.swift`). It needs only Xcode's command line tools to build.
 
-```
-app/build-app.sh && cp -R "build-app/Theme Park World.app" /Applications/
-```
+The app runs `install.py --status` to see what's out of date, runs
+`install.py` with what it carries when anything is, showing its progress,
+then loads `build/host/libtpw.dylib` and enters it at `tpw_main`. The game
+runs in a child process, so a crash ends in an alert offering the log.
 
-The first launch opens full screen at the desktop's own size. After that the
-game keeps whatever size it was given (`--resolution`, below). The game's
-output goes to `~/Library/Logs/Theme Park World/tpw.log` (the run before,
-`tpw.1.log`). If the game crashes, the app says so and offers that log.
-Started from a terminal, the output stays in the terminal, and arguments
-pass to the game:
+- `~/Library/Logs/Theme Park World/`: `tpw.log` (the game; the run before,
+  `tpw.1.log`) and `install.log` (the last build).
+- `--setup` opens the setup window even when the game is built.
+- Started from a terminal, the game's output stays there, and arguments pass
+  to it: `".../Theme Park World.app/Contents/MacOS/Theme Park World" --windowed`.
+- `TPW_HOME` points the app at another game folder. `TPW_ISO` and
+  `TPW_PATCH` fill in the setup window's two files and start the build.
+- `TPW_SNAPSHOT=DIR` draws the setup window's states into DIR as PNGs.
 
-```
-"/Applications/Theme Park World.app/Contents/MacOS/Theme Park World" --windowed
-```
+### Releases
 
-`TPW_HOME` points the app at a game folder other than Application Support.
-For now, the app can't build the game itself; until it can, run `install.py`
-first.
+Pushing a tag `v1.2.3` runs `.github/workflows/release.yml`, which runs
+`app/release.sh` and publishes the release:
+
+- `Theme-Park-World-1.2.3.dmg`;
+- the zip that Sparkle and `install.sh` fetch;
+- `install.sh`;
+- `appcast.xml`, Sparkle's feed.
+
+The app is signed ad hoc, not notarized. Sparkle checks each update with its
+own Ed25519 signature: the workflow signs with the `SPARKLE_PRIVATE_KEY`
+secret, and the app holds the public half, `app/sparkle-public-key.txt`.
+pcrecomp is the commit `app/pcrecomp.lock` names: `main` with the pending
+merges.
 
 ### Step by step
 
