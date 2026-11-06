@@ -283,7 +283,8 @@ static uint32_t exe_stamp(const char *path) {
     return head[nt + 8] | head[nt + 9] << 8 | head[nt + 10] << 16 | (uint32_t)head[nt + 11] << 24;
 }
 
-int main(int argc, char **argv) {
+/* The program's main (exe.c), and the app's way in (app/launcher.m). */
+__attribute__((visibility("default"))) int tpw_main(int argc, char **argv) {
     const char *game = "game";
     int run = 0;
     setvbuf(stderr, NULL, _IONBF, 0);

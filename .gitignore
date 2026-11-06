@@ -12,3 +12,4 @@ __pycache__/
 /src/recomp/gen/
 /game
 /build-macos/
+/build-app/

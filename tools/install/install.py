@@ -9,7 +9,8 @@ Application Support, where the app will look):
                       SafeDisc; its saves and settings are written here
     build/analysis/   the function catalog and the rest of the lift's inputs
     build/gen/        the lifted C
-    build/host/       the compiled host: build/host/tpw
+    build/host/       the compiled game: libtpw.dylib, which Theme Park World.app
+                      loads (app/launcher.m), and tpw, the same as a program
     install.json      what each part was made from
 
 Run again, it redoes only what is out of date: after a fix to the host only
@@ -259,7 +260,7 @@ class Install:
                 self.save_state()
             say(f'    {title.lower()}: {time.time() - t:.0f} s')
         tpw = os.path.join(self.host, 'tpw')
-        say('done. Play with:')
+        say('done. Play with Theme Park World.app (app/build-app.sh), or from a terminal:')
         say(f'  "{tpw}" --game "{self.game}" --run --resolution native')
 
 
