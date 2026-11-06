@@ -27,9 +27,26 @@ endif()
 
 # The lifted C on runtime/win32hle. 64-bit (macOS) the guest's 4 GB is one
 # block of the host's memory; 32-bit Linux a guest address is a host address.
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2)
-pkg_check_modules(SDL2_TTF REQUIRED IMPORTED_TARGET SDL2_ttf)
+# SDL2 and SDL2_ttf from pkg-config (Homebrew), or as the frameworks
+# Theme Park World.app carries (app/toolchain.sh): TPW_SDL_FRAMEWORKS names
+# their folder. The sources include <SDL2/SDL.h> and <SDL2/SDL_ttf.h>, so both
+# frameworks' headers are gathered into one SDL2 folder.
+set(TPW_SDL_FRAMEWORKS "" CACHE PATH "a folder with SDL2.framework and SDL2_ttf.framework (empty: pkg-config)")
+if(TPW_SDL_FRAMEWORKS)
+  set(SDL_INCLUDE ${CMAKE_BINARY_DIR}/sdl-include)
+  file(REMOVE_RECURSE ${SDL_INCLUDE})
+  file(GLOB SDL_HEADERS ${TPW_SDL_FRAMEWORKS}/SDL2.framework/Headers/*.h ${TPW_SDL_FRAMEWORKS}/SDL2_ttf.framework/Headers/*.h)
+  file(COPY ${SDL_HEADERS} DESTINATION ${SDL_INCLUDE}/SDL2)
+  add_library(tpw_sdl INTERFACE)
+  target_include_directories(tpw_sdl INTERFACE ${SDL_INCLUDE} ${SDL_INCLUDE}/SDL2)
+  target_link_libraries(tpw_sdl INTERFACE "-F${TPW_SDL_FRAMEWORKS}" "-framework SDL2" "-framework SDL2_ttf")
+else()
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2)
+  pkg_check_modules(SDL2_TTF REQUIRED IMPORTED_TARGET SDL2_ttf)
+  add_library(tpw_sdl INTERFACE)
+  target_link_libraries(tpw_sdl INTERFACE PkgConfig::SDL2 PkgConfig::SDL2_TTF)
+endif()
 set(HLE ${PCRECOMP}/runtime/win32hle)
 file(GLOB HLE_SOURCES CONFIGURE_DEPENDS "${HLE}/*.c")
 list(FILTER HLE_SOURCES EXCLUDE REGEX "_selftest\\.c$")
@@ -57,7 +74,7 @@ endif()
 set(GEN_OPT "-O2" CACHE STRING "optimisation for the generated C")
 set_source_files_properties(${GEN_SOURCES} PROPERTIES COMPILE_OPTIONS "-w;${GEN_OPT};-fno-strict-aliasing;-fwrapv")
 target_compile_options(tpw_obj PRIVATE -fno-strict-aliasing -fwrapv)
-target_link_libraries(tpw_obj PUBLIC PkgConfig::SDL2 PkgConfig::SDL2_TTF pthread m)
+target_link_libraries(tpw_obj PUBLIC tpw_sdl pthread m)
 # Direct3D on the GPU: Metal (--renderer metal), without ARC (d3d_metal.m).
 if(APPLE)
   target_sources(tpw_obj PRIVATE ${HLE}/d3d_metal.m)
@@ -76,6 +93,9 @@ endif()
 
 add_executable(tpw src/host/exe.c)
 target_link_libraries(tpw PRIVATE tpw_obj)
+if(TPW_SDL_FRAMEWORKS)
+  set_target_properties(tpw PROPERTIES BUILD_RPATH ${TPW_SDL_FRAMEWORKS})
+endif()
 add_library(tpw_game SHARED)
 set_target_properties(tpw_game PROPERTIES OUTPUT_NAME tpw)
 target_link_libraries(tpw_game PRIVATE tpw_obj)

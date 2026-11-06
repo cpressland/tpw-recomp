@@ -3,25 +3,33 @@
     .venv/bin/python -I tools/install/install.py --iso TPWORLD.ISO --patch themeparkworld20patch.zip
 
 Every step of the README's build, into one folder (by default the Mac's
-Application Support, where the app will look):
+Application Support, where Theme Park World.app looks):
 
     game/             the disc's files patched to 2.0, the game unwrapped from
                       SafeDisc; its saves and settings are written here
+    build/src/        the sources it builds from, copied from this repository
+                      and pcrecomp (SOURCES), so the build's paths never move
     build/analysis/   the function catalog and the rest of the lift's inputs
     build/gen/        the lifted C
-    build/host/       the compiled game: libtpw.dylib, which Theme Park World.app
-                      loads (app/launcher.m), and tpw, the same as a program
+    build/host/       the compiled game: libtpw.dylib, which the app loads
+                      (app/Launcher), and tpw, the same as a program
     install.json      what each part was made from
 
 Run again, it redoes only what is out of date: after a fix to the host only
-the compile (seconds, ninja), after a lifter fix the lift and the compile,
-and only after a change to the disc's steps (DATA_VERSION) the whole of it,
-which needs the disc image and the patch again. The game's saves are kept.
+the compile (ninja: what changed), after a lifter fix the lift and the
+compile, and only after a change to the disc's steps (DATA_VERSION) the
+whole of it, which needs the disc image and the patch again. The game's
+saves are kept. --status says what a run would redo, as JSON.
 
-Progress goes to stdout as plain lines; `@step i n title` and
-`@progress fraction` lines are for a front end to show.
+Theme Park World.app runs this with the Python it carries (app/toolchain.sh),
+whose packages include CMake and Ninja, and --sdl-frameworks for its SDL.
+Without those, CMake, Ninja and SDL come from the PATH and pkg-config.
+
+Progress goes to stdout as plain lines; `@step i n title`, `@progress
+fraction` and `@error text` lines are for a front end to show.
 """
 import argparse
+import filecmp
 import hashlib
 import json
 import os
@@ -48,6 +56,11 @@ DEFAULT_DEST = os.path.expanduser('~/Library/Application Support/Theme Park Worl
 KEEP = ('save', os.path.join('data', 'Resolution.sam'))
 SPACE_NEEDED = 3 << 30       # the disc twice over, the lift and the build, at their peak
 
+# What the build needs of each tree: what the app carries, and what is staged.
+SOURCES = {'tpw': ('CMakeLists.txt', 'run_lift.py', 'src/host', 'tools'),
+           'pcrecomp': ('runtime', 'tools', 'LICENSE')}
+SDL_FRAMEWORKS = ('SDL2.framework', 'SDL2_ttf.framework')
+
 
 class Failed(Exception):
     pass
@@ -68,18 +81,47 @@ def md5(path, progress=None):
     return h.hexdigest()
 
 
+def _files(top):
+    """Every file under a folder (or the file itself), less Python's caches."""
+    if os.path.isfile(top):
+        return [top]
+    return sorted(os.path.join(d, n) for d, ds, ns in os.walk(top) for n in ns
+                  if '__pycache__' not in d.split(os.sep) and not n.endswith('.pyc') and n != '.DS_Store')
+
+
 def tree_hash(*paths):
     """A hash of source files: what a step's output depends on."""
     h = hashlib.sha1()
     for top in paths:
-        files = [top] if os.path.isfile(top) else sorted(
-            os.path.join(d, n) for d, _, ns in os.walk(top) for n in ns
-            if n.endswith('.py') and '__pycache__' not in d)
-        for p in files:
+        for p in _files(top):
             h.update(os.path.relpath(p, os.path.dirname(top)).encode())
             with open(p, 'rb') as f:
                 h.update(f.read().replace(b'\r\n', b'\n'))
     return h.hexdigest()[:16]
+
+
+def sync(src, rels, dst):
+    """Make dst/<rel> match src/<rel>: a file is written only when its bytes
+    differ, so its time says when it last changed, whatever the source's says
+    (an update's files can be older than the last build). Returns the count."""
+    changed = 0
+    for rel in rels:
+        s, d = os.path.join(src, rel), os.path.join(dst, rel)
+        want = {os.path.relpath(p, s) if os.path.isdir(s) else '' for p in _files(s)} if os.path.exists(s) else set()
+        if os.path.isdir(d):
+            for p in _files(d):
+                if os.path.relpath(p, d) not in want:
+                    os.remove(p)
+                    changed += 1
+        for r in sorted(want):
+            sp, dp = os.path.join(s, r) if r else s, os.path.join(d, r) if r else d
+            if os.path.isfile(dp) and filecmp.cmp(sp, dp, shallow=False):
+                continue
+            os.makedirs(os.path.dirname(dp), exist_ok=True)
+            shutil.copyfile(sp, dp)
+            shutil.copymode(sp, dp)
+            changed += 1
+    return changed
 
 
 def find_pcrecomp(given):
@@ -90,6 +132,19 @@ def find_pcrecomp(given):
     raise Failed('no pcrecomp found: give --pcrecomp, or clone it beside this repository (README)')
 
 
+def find_tools():
+    """CMake and Ninja: this Python's own packages first (the app's), then the PATH."""
+    try:
+        import cmake
+        cm = os.path.join(cmake.CMAKE_BIN_DIR, 'cmake')
+    except ImportError:
+        cm = shutil.which('cmake')
+    nj = os.path.join(os.path.dirname(sys.executable), 'ninja')
+    if not os.access(nj, os.X_OK):
+        nj = shutil.which('ninja')
+    return cm, nj
+
+
 class Install:
     def __init__(self, a):
         self.a = a
@@ -97,6 +152,10 @@ class Install:
         self.pcrecomp = find_pcrecomp(a.pcrecomp)
         self.game = os.path.join(self.dest, 'game')
         self.build = os.path.join(self.dest, 'build')
+        self.src = os.path.join(self.build, 'src')
+        self.tpw_src = os.path.join(self.src, 'tpw')
+        self.pc_src = os.path.join(self.src, 'pcrecomp')
+        self.sdl = os.path.join(self.src, 'Frameworks') if a.sdl_frameworks else None
         self.analysis = os.path.join(self.build, 'analysis')
         self.gen = os.path.join(self.build, 'gen')
         self.host = os.path.join(self.build, 'host')
@@ -107,7 +166,7 @@ class Install:
                 self.state = json.load(f)
         except (OSError, ValueError):
             self.state = {}
-        self.env = dict(os.environ, PCRECOMP=self.pcrecomp)
+        self.env = dict(os.environ, PCRECOMP=self.pc_src)
 
     # ---- bookkeeping ---------------------------------------------------
 
@@ -116,10 +175,10 @@ class Install:
             json.dump(self.state, f, indent=1)
         os.replace(self.state_path + '.new', self.state_path)
 
-    def run(self, *cmd, cwd=None):
+    def run(self, *cmd):
         """A step's command; its output is shown as it comes."""
         say('$ ' + ' '.join(os.path.basename(c) if i == 0 else c for i, c in enumerate(cmd)))
-        p = subprocess.run(cmd, cwd=cwd or REPO, env=self.env)
+        p = subprocess.run(cmd, cwd=self.tpw_src, env=self.env)
         if p.returncode:
             raise Failed(f'{os.path.basename(cmd[0])} {cmd[1] if len(cmd) > 1 else ""} failed ({p.returncode})')
 
@@ -129,19 +188,36 @@ class Install:
     # ---- the keys: what each part was made from -------------------------
 
     def keys(self):
+        """From the sources given (the repository's, or the app's), not the staged copy."""
         tools = os.path.join(self.pcrecomp, 'tools')
         data = f'data-{DATA_VERSION}'
         analysis = tree_hash(os.path.join(tools, 'pe'), os.path.join(tools, 'cpp'),
                              os.path.join(tools, 'disasm'), os.path.join(REPO, 'tools', 'gen'))
         lift = tree_hash(os.path.join(tools, 'lift'), os.path.join(REPO, 'run_lift.py'))
+        host = tree_hash(os.path.join(REPO, 'CMakeLists.txt'), os.path.join(REPO, 'src', 'host'),
+                         os.path.join(self.pcrecomp, 'runtime'),
+                         *(os.path.join(self.a.sdl_frameworks, f) for f in SDL_FRAMEWORKS if self.a.sdl_frameworks))
         return {'data': data,
                 'analysis': f'{data}/{analysis}',
-                'lift': f'{data}/{analysis}/{lift}'}
+                'lift': f'{data}/{analysis}/{lift}',
+                'host': f'{data}/{analysis}/{lift}/{host}'}
+
+    def stale(self, keys):
+        """The parts out of date, in order: one stale part makes all after it so."""
+        if not os.path.isdir(self.game):
+            self.state.pop('data', None)
+        if not os.path.exists(os.path.join(self.host, 'libtpw.dylib')):
+            self.state.pop('host', None)
+        out = []
+        for k in ('data', 'analysis', 'lift', 'host'):
+            if out or self.state.get(k) != keys[k]:
+                out.append(k)
+        return out
 
     # ---- the steps -------------------------------------------------------
 
     def check(self):
-        """The toolchain, the space, and the inputs when the disc's steps must run."""
+        """The toolchain and the space; the inputs are checked when the disc's steps run."""
         missing = [m for m in ('pefile', 'capstone', 'unicorn')
                    if subprocess.run([sys.executable, '-I', '-c', f'import {m}'],
                                      capture_output=True).returncode]
@@ -149,26 +225,43 @@ class Install:
             raise Failed(f'this Python lacks {", ".join(missing)} (README: Python packages)')
         if subprocess.run(['xcrun', '--find', 'clang'], capture_output=True).returncode:
             raise Failed("no C compiler: install Xcode's command line tools (xcode-select --install)")
-        for tool in ('cmake', 'ninja', 'pkg-config'):
-            if not shutil.which(tool):
-                raise Failed(f'no {tool} on the PATH (README: prerequisites)')
-        if subprocess.run(['pkg-config', '--exists', 'sdl2', 'SDL2_ttf']).returncode:
-            raise Failed('pkg-config cannot find sdl2 and SDL2_ttf')
+        self.cmake, self.ninja = find_tools()
+        if not self.cmake or not self.ninja:
+            raise Failed('no cmake or ninja (README: prerequisites)')
+        if self.a.sdl_frameworks:
+            for f in SDL_FRAMEWORKS:
+                if not os.path.isdir(os.path.join(self.a.sdl_frameworks, f)):
+                    raise Failed(f'no {f} in {self.a.sdl_frameworks}')
+        elif subprocess.run(['pkg-config', '--exists', 'sdl2', 'SDL2_ttf']).returncode:
+            raise Failed('pkg-config cannot find sdl2 and SDL2_ttf (README: prerequisites)')
         os.makedirs(self.dest, exist_ok=True)
         free = shutil.disk_usage(self.dest).free
-        if free < SPACE_NEEDED:
+        if free < SPACE_NEEDED and not os.path.isdir(self.host):
             raise Failed(f'{free >> 20} MB free at {self.dest}; it needs about {SPACE_NEEDED >> 30} GB')
+
+    def stage(self):
+        """The sources, and SDL, copied to where the build always finds them."""
+        n = sync(REPO, SOURCES['tpw'], self.tpw_src) + sync(self.pcrecomp, SOURCES['pcrecomp'], self.pc_src)
+        # Frameworks are copied whole, links and all, when they differ at all.
+        for f in SDL_FRAMEWORKS if self.sdl else ():
+            src, dst = os.path.join(self.a.sdl_frameworks, f), os.path.join(self.sdl, f)
+            if not os.path.isdir(dst) or tree_hash(src) != tree_hash(dst):
+                shutil.rmtree(dst, ignore_errors=True)
+                shutil.copytree(src, dst, symlinks=True)
+                n += 1
+        say(f'{n} source files changed')
 
     def need_inputs(self):
         for what, path, want in (('disc image', self.a.iso, ISO_MD5), ('2.0 patch', self.a.patch, PATCH_MD5)):
             if not path:
-                raise Failed(f'the game must be set up from the start: give --iso and --patch')
+                raise Failed('the game must be set up from the disc: give --iso and --patch')
             if not os.path.isfile(path):
                 raise Failed(f'no {what} at {path}')
             say(f'checking the {what}...')
             got = md5(path, lambda f: say(f'@progress {f:.3f}'))
             if got != want:
-                raise Failed(f'{path} is not the {what} this needs (MD5 {got}, wanted {want}); see README')
+                raise Failed(f'{os.path.basename(path)} is not the {what} this needs: check it is the '
+                             f'right file, downloaded whole (MD5 {got[:8]}…, wanted {want[:8]}…)')
 
     def disc(self):
         """Extract, patch to 2.0, unwrap: a new game folder, saves carried over."""
@@ -179,9 +272,10 @@ class Install:
         say('extracting the disc...')
         n = iso.extract(self.a.iso, cd, lambda d, t: say(f'@progress {d / t:.3f}'))
         say(f'{n} files')
-        self.py(os.path.join(REPO, 'tools', 'rtpatch', 'apply.py'), self.a.patch, cd, v20)
+        say('@progress -1')
+        self.py(os.path.join(self.tpw_src, 'tools', 'rtpatch', 'apply.py'), self.a.patch, cd, v20)
         shutil.rmtree(cd)
-        self.py(os.path.join(REPO, 'tools', 'safedisc', 'unwrap.py'), '--cd', v20, '--iso', self.a.iso,
+        self.py(os.path.join(self.tpw_src, 'tools', 'safedisc', 'unwrap.py'), '--cd', v20, '--iso', self.a.iso,
                 '-o', exe, '--work', os.path.join(self.tmp, 'unwrap'))
         got = md5(exe)
         if got != GAME_MD5:
@@ -192,7 +286,8 @@ class Install:
             old = os.path.join(self.game, rel)
             if os.path.exists(old):
                 new = os.path.join(v20, rel)
-                shutil.rmtree(new, ignore_errors=True) if os.path.isdir(new) else None
+                if os.path.isdir(new):
+                    shutil.rmtree(new)
                 os.makedirs(os.path.dirname(new), exist_ok=True)
                 os.replace(old, new)
         if os.path.exists(self.game):
@@ -202,7 +297,7 @@ class Install:
 
     def analyse(self):
         """The headers and imports, C++ classes, the function catalog, code in data."""
-        tools, exe, out = os.path.join(self.pcrecomp, 'tools'), os.path.join(self.game, 'TP.EXE'), self.analysis
+        tools, exe, out = os.path.join(self.pc_src, 'tools'), os.path.join(self.game, 'TP.EXE'), self.analysis
         shutil.rmtree(out, ignore_errors=True)
         os.makedirs(out)
         self.py(os.path.join(tools, 'pe', 'pe_analyze.py'), exe, '--json', os.path.join(out, 'pe_analysis.json'))
@@ -211,42 +306,48 @@ class Install:
         say('cataloguing the functions (a few minutes)...')
         self.py(os.path.join(tools, 'disasm', 'disasm32.py'), exe, '-o', os.path.join(out, 'functions.json'),
                 '--seed-functions', os.path.join(out, 'rtti_seeds.json'))
-        self.py(os.path.join(REPO, 'tools', 'gen', 'data_code_ptrs.py'), exe,
+        self.py(os.path.join(self.tpw_src, 'tools', 'gen', 'data_code_ptrs.py'), exe,
                 os.path.join(out, 'functions.json'), os.path.join(out, 'run_seeds.json'))
 
     def lift(self):
         shutil.rmtree(self.gen, ignore_errors=True)
         os.makedirs(self.gen)
-        self.py(os.path.join(REPO, 'run_lift.py'), '--all', '--exe', os.path.join(self.game, 'TP.EXE'),
+        self.py(os.path.join(self.tpw_src, 'run_lift.py'), '--all', '--exe', os.path.join(self.game, 'TP.EXE'),
                 '--work', self.analysis, '--out', self.gen)
 
     def compile(self):
+        # A build folder made another way (other sources, other SDL) starts again.
+        config = [self.tpw_src, self.pc_src, self.sdl or 'pkg-config', self.cmake]
+        if self.state.get('host_config') != config:
+            shutil.rmtree(self.host, ignore_errors=True)
         if not os.path.exists(os.path.join(self.host, 'build.ninja')):
-            self.run('cmake', '-S', REPO, '-B', self.host, '-G', 'Ninja',
-                     f'-DPCRECOMP={self.pcrecomp}', f'-DGEN_DIR={self.gen}')
+            self.run(self.cmake, '-S', self.tpw_src, '-B', self.host, '-G', 'Ninja',
+                     f'-DCMAKE_MAKE_PROGRAM={self.ninja}', f'-DPCRECOMP={self.pc_src}', f'-DGEN_DIR={self.gen}',
+                     f'-DTPW_SDL_FRAMEWORKS={self.sdl or ""}')
+            self.state['host_config'] = config
+            self.save_state()
         say('compiling (a few minutes the first time)...')
-        self.run('cmake', '--build', self.host)
+        self.run(self.cmake, '--build', self.host)
 
     # ---- the order -------------------------------------------------------
+
+    def status(self):
+        keys = self.keys()
+        stale = self.stale(keys)
+        say(json.dumps({'ready': not stale, 'stale': stale, 'needs_disc': 'data' in stale}))
 
     def go(self):
         keys = self.keys()
         if self.a.force:
             self.state = {}
-        if not os.path.isdir(self.game):
-            self.state.pop('data', None)
+        stale = self.stale(keys)
         steps = [('Checking the tools', self.check, None),
+                 ('Copying the sources', self.stage, None),
                  ('Unpacking, patching and unwrapping the game', self.disc, 'data'),
                  ('Analysing the game', self.analyse, 'analysis'),
                  ('Translating the game to C', self.lift, 'lift'),
-                 ('Compiling', self.compile, None)]
-        # A part is redone when its key changed, and so is everything after it.
-        stale = False
-        todo = []
-        for title, fn, key in steps:
-            stale = stale or (key is not None and self.state.get(key) != keys[key])
-            if key is None or stale:
-                todo.append((title, fn, key))
+                 ('Compiling', self.compile, 'host')]
+        todo = [s for s in steps if s[2] is None or s[2] in stale]
         for i, (title, fn, key) in enumerate(todo, 1):
             say(f'@step {i} {len(todo)} {title}')
             say(f'==> [{i}/{len(todo)}] {title}')
@@ -259,22 +360,43 @@ class Install:
                 self.state[key] = keys[key]
                 self.save_state()
             say(f'    {title.lower()}: {time.time() - t:.0f} s')
+        say('@done')
         tpw = os.path.join(self.host, 'tpw')
         say('done. Play with Theme Park World.app (app/build-app.sh), or from a terminal:')
         say(f'  "{tpw}" --game "{self.game}" --run --resolution native')
 
 
+def export(out, pcrecomp):
+    """The sources the app carries: SOURCES of this repository and pcrecomp."""
+    n = sync(REPO, SOURCES['tpw'], os.path.join(out, 'tpw')) + \
+        sync(find_pcrecomp(pcrecomp), SOURCES['pcrecomp'], os.path.join(out, 'pcrecomp'))
+    say(f'{n} files to {out}')
+
+
 def main():
+    if os.environ.get('TPW_PGROUP'):
+        os.setpgrp()       # the app stops the whole build (compilers too) through the group
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0],
                                  formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     ap.add_argument('--iso', help='TPWORLD.ISO (needed the first time)')
     ap.add_argument('--patch', help='themeparkworld20patch.zip (needed the first time)')
     ap.add_argument('--dest', default=DEFAULT_DEST, help='where it goes (default: %(default)s)')
     ap.add_argument('--pcrecomp', help='the pcrecomp checkout (default: ./pcrecomp, then ../pcrecomp)')
+    ap.add_argument('--sdl-frameworks', help='a folder with SDL2.framework and SDL2_ttf.framework '
+                    '(default: SDL from pkg-config)')
     ap.add_argument('--force', action='store_true', help='redo every step')
+    ap.add_argument('--status', action='store_true', help='print what a run would redo, as JSON')
+    ap.add_argument('--export-sources', metavar='DIR', help='copy the sources the build needs to DIR, and stop')
     a = ap.parse_args()
+    if a.sdl_frameworks:
+        a.sdl_frameworks = os.path.abspath(a.sdl_frameworks)
     try:
-        Install(a).go()
+        if a.export_sources:
+            export(a.export_sources, a.pcrecomp)
+        elif a.status:
+            Install(a).status()
+        else:
+            Install(a).go()
     except Failed as e:
         say(f'@error {e}')
         say(f'error: {e}')
