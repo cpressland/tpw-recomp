@@ -104,6 +104,33 @@ the end. Run again, it redoes only what is out of date: after a host fix only
 the compile, after a lifter fix the lift too, and the disc and patch are
 needed again only if the disc's steps change. Saves are kept.
 
+### Theme Park World.app
+
+`app/build-app.sh` makes `build-app/Theme Park World.app`, which holds
+nothing of the game: only a small launcher (`app/launcher.m`), its icon and
+`Info.plist`. It loads the game that `install.py` built,
+`build/host/libtpw.dylib` in Application Support, so drag it to
+/Applications and open it like any app:
+
+```
+app/build-app.sh && cp -R "build-app/Theme Park World.app" /Applications/
+```
+
+The first launch opens full screen at the desktop's own size. After that the
+game keeps whatever size it was given (`--resolution`, below). The game's
+output goes to `~/Library/Logs/Theme Park World/tpw.log` (the run before,
+`tpw.1.log`). If the game crashes, the app says so and offers that log.
+Started from a terminal, the output stays in the terminal, and arguments
+pass to the game:
+
+```
+"/Applications/Theme Park World.app/Contents/MacOS/Theme Park World" --windowed
+```
+
+`TPW_HOME` points the app at a game folder other than Application Support.
+For now, the app can't build the game itself; until it can, run `install.py`
+first.
+
 ### Step by step
 
 1. Python packages:
