@@ -25,7 +25,7 @@ private final class Pending: @unchecked Sendable {
 
 @MainActor
 final class Installer: ObservableObject {
-    enum Phase: Equatable { case needTools, choose, working, failed(String), done }
+    enum Phase: Equatable { case needTools, choose, working, failed(String), ready }
 
     @Published var phase: Phase = .choose
     @Published var iso: URL?
@@ -43,6 +43,8 @@ final class Installer: ObservableObject {
     @Published var picking: String?              // which file a panel is open for
     @Published var dropTarget: String?
     @Published var showDetails = false
+    /// The two files picked by hand, not downloaded.
+    @Published var ownFiles = false
     @Published var askedForTools = false
 
     var onDone: (() -> Void)?
@@ -105,7 +107,11 @@ final class Installer: ObservableObject {
         started = Date()
         cancelled = false
         var extra: [String] = []
-        if let iso, let patch { extra += ["--iso", iso.path, "--patch", patch.path] }
+        if ownFiles, let iso, let patch {
+            extra += ["--iso", iso.path, "--patch", patch.path]
+        } else {
+            extra += ["--download"]
+        }
         let p = Process()
         p.executableURL = Paths.python
         p.arguments = Installer.arguments(extra)
@@ -161,7 +167,7 @@ final class Installer: ObservableObject {
         } else if line.hasPrefix("@error ") {
             phase = .failed(String(line.dropFirst(7)))
         } else if line == "@done" {
-            phase = .done
+            phase = .ready
         } else {
             // Ninja's "[61/127] Building ..." measures the compile.
             if line.hasPrefix("["), let slash = line.firstIndex(of: "/"), let close = line.firstIndex(of: "]"),
@@ -179,7 +185,8 @@ final class Installer: ObservableObject {
         if cancelled {
             phase = needsDisc ? .choose : .failed("The build was cancelled.")
         } else if code == 0 {
-            phase = .done
+            phase = .ready
+            needsDisc = false
             onDone?()
         } else if case .failed = phase {
         } else {

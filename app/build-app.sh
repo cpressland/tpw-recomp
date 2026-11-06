@@ -36,7 +36,7 @@ if [ -n "$SPARKLE_FEED" ] && [ -n "$SPARKLE_PUBLIC_KEY" ]; then
   plutil -insert SUFeedURL -string "$SPARKLE_FEED" "$C/Info.plist"
   plutil -insert SUPublicEDKey -string "$SPARKLE_PUBLIC_KEY" "$C/Info.plist"
   plutil -insert SUEnableAutomaticChecks -bool YES "$C/Info.plist"
-  plutil -insert SUAutomaticallyUpdate -bool YES "$C/Info.plist"
+  plutil -insert SUAutomaticallyUpdate -bool NO "$C/Info.plist"    # Sparkle asks first
 fi
 swift app/icon.swift "$OUT/AppIcon.iconset" >/dev/null
 iconutil -c icns "$OUT/AppIcon.iconset" -o "$C/Resources/AppIcon.icns"

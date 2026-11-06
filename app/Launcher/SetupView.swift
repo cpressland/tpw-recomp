@@ -1,10 +1,12 @@
-// The window the app shows when the game needs building: the first time
-// (asking for the disc image and the 2.0 patch), and after an update.
+// The app's window: Play when the game is built; otherwise building it, the
+// first time (downloading the disc image and the 2.0 patch, or the player's
+// own copies) and after an update that needs it.
 import SwiftUI
 import UniformTypeIdentifiers
 
 struct SetupView: View {
     @ObservedObject var installer: Installer
+    var play: () -> Void = {}
     var checkForUpdates: () -> Void = {}
 
     var body: some View {
@@ -12,10 +14,11 @@ struct SetupView: View {
             header
             switch installer.phase {
             case .needTools: NeedTools(installer: installer)
-            case .choose: Choose(installer: installer)
+            case .choose:
+                if installer.ownFiles { Choose(installer: installer) } else { Download(installer: installer) }
             case .working: Working(installer: installer)
             case .failed(let why): Failed(installer: installer, why: why)
-            case .done: Done()
+            case .ready: Ready(play: play, checkForUpdates: checkForUpdates)
             }
         }
         .padding(28)
@@ -27,13 +30,65 @@ struct SetupView: View {
             Image(nsImage: NSApp.applicationIconImage ?? NSImage())
                 .resizable().frame(width: 64, height: 64)
             VStack(alignment: .leading, spacing: 3) {
-                Text(installer.needsDisc ? "Set up Theme Park World" : "Updating Theme Park World")
-                    .font(.title2.weight(.semibold))
-                Text(installer.needsDisc
-                     ? "The game is built on this Mac from your own copy of it."
-                     : "This version needs the game rebuilt. Your parks and saves are kept.")
-                    .foregroundStyle(.secondary)
+                Text(title).font(.title2.weight(.semibold))
+                Text(subtitle).foregroundStyle(.secondary)
             }
+        }
+    }
+}
+
+extension SetupView {
+    private var version: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+    }
+    private var title: String {
+        if installer.phase == .ready { return "Theme Park World" }
+        return installer.needsDisc ? "Set up Theme Park World" : "Updating Theme Park World"
+    }
+    private var subtitle: String {
+        if installer.phase == .ready { return version.isEmpty ? "Ready to play." : "Ready to play. Version \(version)." }
+        return installer.needsDisc ? "The game is built on this Mac, once, before its first run."
+                                   : "This version needs the game rebuilt. Your parks and saves are kept."
+    }
+}
+
+// ---- ready ----------------------------------------------------------------
+
+private struct Ready: View {
+    let play: () -> Void
+    let checkForUpdates: () -> Void
+
+    var body: some View {
+        HStack {
+            Button("Check for Updates…", action: checkForUpdates)
+            Spacer()
+            Button(action: play) {
+                Label("Play", systemImage: "play.fill").frame(minWidth: 120)
+            }
+            .controlSize(.large)
+            .keyboardShortcut(.defaultAction)
+        }
+        .padding(.top, 4)
+    }
+}
+
+// ---- downloading the two files ------------------------------------------------
+
+private struct Download: View {
+    @ObservedObject var installer: Installer
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("It downloads the game's disc image and its 2.0 patch (630 MB), then builds the game from them. "
+                 + "That takes about 10 minutes and 3 GB of space; your Mac stays free to use meanwhile.")
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Button("Use Files I Already Have…") { installer.ownFiles = true }
+                Spacer()
+                Button("Download and Build") { installer.start() }
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(.top, 6)
         }
     }
 }
@@ -53,8 +108,7 @@ private struct Choose: View {
                     types: [.zip], source: "ModDB",
                     link: URL(string: "https://www.moddb.com/downloads/theme-park-world-20-patch")!, file: $installer.patch)
             HStack {
-                Text("Takes about 10 minutes and 3 GB of space.")
-                    .font(.callout).foregroundStyle(.secondary)
+                Button("Download Them Instead") { installer.ownFiles = false }
                 Spacer()
                 Button("Build Theme Park World") { installer.start() }
                     .keyboardShortcut(.defaultAction)
@@ -231,12 +285,5 @@ private struct NeedTools: View {
                     .disabled(installer.askedForTools)
             }
         }
-    }
-}
-
-private struct Done: View {
-    var body: some View {
-        Label("Theme Park World is ready. Starting the game…", systemImage: "checkmark.circle.fill")
-            .foregroundStyle(.green)
     }
 }

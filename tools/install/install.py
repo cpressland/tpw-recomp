@@ -35,8 +35,11 @@ import json
 import os
 import shutil
 import subprocess
+import ssl
 import sys
 import time
+import urllib.error
+import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
@@ -55,6 +58,12 @@ DEFAULT_DEST = os.path.expanduser('~/Library/Application Support/Theme Park Worl
 # What a player's run writes into the game folder, carried over a new one.
 KEEP = ('save', os.path.join('data', 'Resolution.sam'))
 SPACE_NEEDED = 3 << 30       # the disc twice over, the lift and the build, at their peak
+
+# --download: the two files, from where this project keeps copies of them
+# (TPW_DOWNLOAD_BASE: elsewhere). Checked against the same MD5s as ever.
+DOWNLOAD_BASE = os.environ.get('TPW_DOWNLOAD_BASE', 'https://files.cpressland.io/public/tpw-recomp')
+DOWNLOADS = (('disc image', 'theme_park_world.iso', ISO_MD5, 'iso'),
+             ('2.0 patch', 'theme_park_world_2_0_patch.zip', PATCH_MD5, 'patch'))
 
 # What the build needs of each tree: what the app carries, and what is staged.
 SOURCES = {'tpw': ('CMakeLists.txt', 'run_lift.py', 'src/host', 'tools'),
@@ -251,10 +260,65 @@ class Install:
                 n += 1
         say(f'{n} source files changed')
 
+    def download(self):
+        """The disc image and the patch, into downloads/: resumed where a last
+        try stopped, checked, and kept only until the game folder is made."""
+        folder = os.path.join(self.dest, 'downloads')
+        os.makedirs(folder, exist_ok=True)
+        try:
+            ctx = ssl.create_default_context()
+            urllib.request.urlopen(DOWNLOAD_BASE + '/' + DOWNLOADS[1][1], context=ctx, timeout=30).close()
+        except ssl.SSLError:
+            ctx = ssl.create_default_context(cafile='/etc/ssl/cert.pem')    # macOS's own roots
+        except (urllib.error.URLError, OSError) as e:
+            raise Failed(f'cannot reach {DOWNLOAD_BASE}: {getattr(e, "reason", e)}')
+        sizes = {}
+        for what, name, want, _ in DOWNLOADS:
+            with urllib.request.urlopen(urllib.request.Request(f'{DOWNLOAD_BASE}/{name}', method='HEAD'),
+                                        context=ctx, timeout=30) as r:
+                sizes[name] = int(r.headers['Content-Length'])
+        total, before = sum(sizes.values()), 0
+        for what, name, want, arg in DOWNLOADS:
+            path = os.path.join(folder, name)
+            have = os.path.getsize(path) if os.path.exists(path) else 0
+            if have > sizes[name]:
+                os.remove(path)
+                have = 0
+            if have < sizes[name]:
+                say(f'downloading the {what} ({sizes[name] >> 20} MB)...')
+                req = urllib.request.Request(f'{DOWNLOAD_BASE}/{name}')
+                if have:
+                    req.add_header('Range', f'bytes={have}-')
+                    say(f'  resuming at {have >> 20} MB')
+                try:
+                    with urllib.request.urlopen(req, context=ctx, timeout=60) as r, \
+                            open(path, 'ab' if have and r.status == 206 else 'wb') as f:
+                        if r.status != 206:
+                            have = 0
+                        last = 0.0
+                        for chunk in iter(lambda: r.read(1 << 20), b''):
+                            f.write(chunk)
+                            have += len(chunk)
+                            if time.time() - last > 0.25:
+                                last = time.time()
+                                say(f'@progress {(before + have) / total:.3f}')
+                except (urllib.error.URLError, OSError) as e:
+                    raise Failed(f'the download of the {what} stopped ({getattr(e, "reason", e)}); '
+                                 'trying again carries on from there')
+            say(f'checking the {what}...')
+            got = md5(path)
+            if got != want:
+                os.remove(path)
+                raise Failed(f'the downloaded {what} is not the expected file (MD5 {got[:8]}…, '
+                             f'wanted {want[:8]}…); trying again downloads it afresh')
+            setattr(self.a, arg, path)
+            before += sizes[name]
+        say('@progress 1')
+
     def need_inputs(self):
         for what, path, want in (('disc image', self.a.iso, ISO_MD5), ('2.0 patch', self.a.patch, PATCH_MD5)):
             if not path:
-                raise Failed('the game must be set up from the disc: give --iso and --patch')
+                raise Failed('the game must be set up from the disc: give --iso and --patch, or --download')
             if not os.path.isfile(path):
                 raise Failed(f'no {what} at {path}')
             say(f'checking the {what}...')
@@ -294,6 +358,7 @@ class Install:
             os.replace(self.game, os.path.join(self.tmp, 'old-game'))
         os.replace(v20, self.game)
         shutil.rmtree(self.tmp, ignore_errors=True)
+        shutil.rmtree(os.path.join(self.dest, 'downloads'), ignore_errors=True)
 
     def analyse(self):
         """The headers and imports, C++ classes, the function catalog, code in data."""
@@ -341,8 +406,11 @@ class Install:
         if self.a.force:
             self.state = {}
         stale = self.stale(keys)
+        # Downloading only when the disc's steps run and no files were given.
+        fetch = 'data' in stale and self.a.download and not (self.a.iso and self.a.patch)
         steps = [('Checking the tools', self.check, None),
                  ('Copying the sources', self.stage, None),
+                 *([('Downloading the game', self.download, None)] if fetch else []),
                  ('Unpacking, patching and unwrapping the game', self.disc, 'data'),
                  ('Analysing the game', self.analyse, 'analysis'),
                  ('Translating the game to C', self.lift, 'lift'),
@@ -380,6 +448,8 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     ap.add_argument('--iso', help='TPWORLD.ISO (needed the first time)')
     ap.add_argument('--patch', help='themeparkworld20patch.zip (needed the first time)')
+    ap.add_argument('--download', action='store_true',
+                    help='with no --iso and --patch, download both (TPW_DOWNLOAD_BASE)')
     ap.add_argument('--dest', default=DEFAULT_DEST, help='where it goes (default: %(default)s)')
     ap.add_argument('--pcrecomp', help='the pcrecomp checkout (default: ./pcrecomp, then ../pcrecomp)')
     ap.add_argument('--sdl-frameworks', help='a folder with SDL2.framework and SDL2_ttf.framework '

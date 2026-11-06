@@ -6,9 +6,13 @@
 //   ~/Library/Application Support/Theme Park World/   the game (TPW_HOME: elsewhere)
 //   ~/Library/Logs/Theme Park World/                   tpw.log (the game), install.log (the build)
 //
-// --setup opens the setup window even when the game is ready; TPW_ISO and
-// TPW_PATCH fill in its two files and start the build. Started from a
-// terminal, the game's output stays there and other arguments pass to it.
+// The window shows Play when the game is built, and otherwise builds it,
+// downloading the disc image and the patch (or using the player's own). --setup
+// builds it again even when it is ready; TPW_ISO and TPW_PATCH give the
+// player's own two files and start the build; TPW_BUILD_NOW presses Download
+// and Build, TPW_PLAY_NOW presses Play (for tests).
+// Started from a terminal, the game's output stays there and other arguments
+// pass to it.
 import AppKit
 import Sparkle
 import SwiftUI
@@ -39,26 +43,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         clearQuarantine()
         let status = Installer.status()
         let ready = status?.ready ?? Paths.exists(Paths.library)
-        if ready && !CommandLine.arguments.contains("--setup") {
-            play()
-            return
-        }
-        installer.needsDisc = status?.needs_disc ?? !Paths.exists(Paths.game)
-        installer.onDone = { [weak self] in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self?.play() }
-        }
-        // TPW_ISO and TPW_PATCH: the two files chosen already, and the build started.
+        // TPW_ISO and TPW_PATCH: the player's own two files, chosen already.
         let env = ProcessInfo.processInfo.environment
         if let iso = env["TPW_ISO"], let patch = env["TPW_PATCH"] {
             installer.iso = URL(fileURLWithPath: iso)
             installer.patch = URL(fileURLWithPath: patch)
+            installer.ownFiles = true
+        }
+        if ready && !CommandLine.arguments.contains("--setup") {
+            installer.needsDisc = false
+            installer.phase = .ready
+        } else {
+            installer.needsDisc = status?.needs_disc ?? !Paths.exists(Paths.game)
+        }
+        installer.onDone = { [weak self] in
+            if env["TPW_PLAY_NOW"] != nil { self?.play() } else { self?.window?.makeKeyAndOrderFront(nil) }
         }
         showWindow()
-        if !Installer.hasCompiler() {
+        if installer.phase == .ready {
+            if env["TPW_PLAY_NOW"] != nil { play() }        // for tests: as if Play were pressed
+        } else if !Installer.hasCompiler() {
             installer.phase = .needTools
-        } else if !installer.needsDisc || (installer.iso != nil && installer.patch != nil) {
+        } else if !installer.needsDisc || (installer.ownFiles && installer.iso != nil && installer.patch != nil)
+                    || env["TPW_BUILD_NOW"] != nil {
             installer.start()
         }
+        // Sparkle's own check, now, while the window is up: it asks before it installs.
+        updater?.updater.checkForUpdatesInBackground()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { !playing }
@@ -71,9 +82,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         let w = NSWindow(contentRect: .zero, styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
         w.title = Paths.title
-        w.contentView = NSHostingView(rootView: SetupView(installer: installer, checkForUpdates: { [weak self] in
-            self?.updater?.checkForUpdates(nil)
-        }))
+        w.contentView = NSHostingView(rootView: SetupView(
+            installer: installer,
+            play: { [weak self] in self?.play() },
+            checkForUpdates: { [weak self] in self?.updater?.checkForUpdates(nil) }))
         w.isReleasedWhenClosed = false
         w.center()
         w.makeKeyAndOrderFront(nil)
@@ -168,9 +180,12 @@ func snapshots(to dir: URL) {
         try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?
             .write(to: dir.appendingPathComponent("\(name).png"))
     }
-    shot("1-choose") { $0.phase = .choose }
+    shot("0-ready") { $0.needsDisc = false; $0.phase = .ready }
+    shot("1-download") { $0.phase = .choose }
+    shot("1-choose") { $0.phase = .choose; $0.ownFiles = true }
     shot("2-chosen") {
         $0.phase = .choose
+        $0.ownFiles = true
         $0.iso = URL(fileURLWithPath: "/Users/me/Downloads/TPWORLD.ISO")
         $0.patch = URL(fileURLWithPath: "/Users/me/Downloads/themeparkworld20patch.zip")
     }
