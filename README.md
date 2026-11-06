@@ -18,10 +18,10 @@ still awaiting review upstream; see [pcrecomp: pending merges](#pcrecomp-pending
 
 ## Playing on a Mac
 
-Theme Park World.app needs a Mac with Apple silicon, macOS 26 or later, and
-your own copy of the game: the two downloads below. Nothing of the game is in
-the app. The first time it runs, it builds the game on your Mac from them,
-which takes about ten minutes.
+Theme Park World.app needs a Mac with Apple silicon and macOS 26 or later.
+Nothing of the game is in the app: the first time it runs, it downloads the
+disc image and the 2.0 patch (630 MB, from `files.cpressland.io`) and builds
+the game on your Mac from them, which takes about ten minutes.
 
 Either paste this into Terminal:
 
@@ -36,12 +36,14 @@ first time you open a downloaded copy macOS refuses it: open it once, then
 in **System Settings → Privacy & Security** choose **Open Anyway**. The
 Terminal install skips that step.
 
-When it opens, the app asks for the disc image and the patch, and offers to
-install Apple's Command Line Tools if this Mac doesn't have them (the
-compiler; Xcode isn't needed). Then it builds the game and starts it. It
-keeps itself up to date (Sparkle), and when an update needs the game rebuilt
-it does that on its next launch, in a few minutes, without the disc. Your
-parks and saves are kept in `~/Library/Application Support/Theme Park World`.
+The first time it opens, the app offers to install Apple's Command Line Tools
+if this Mac doesn't have them (the compiler; Xcode isn't needed), then
+**Download and Build**. **Use Files I Already Have** builds from your own
+copies of the two files instead (below). After that it opens on **Play**,
+and checks for updates (Sparkle) as it opens, asking before it installs one.
+When an update needs the game rebuilt, it does that on its next launch, in a
+few minutes, without downloading the disc again. Your parks and saves are
+kept in `~/Library/Application Support/Theme Park World`.
 
 ## What you need
 
@@ -123,7 +125,9 @@ does every step below, from the disc image to a compiled game:
 .venv/bin/python -I tools/install/install.py --iso TPWORLD.ISO --patch themeparkworld20patch.zip
 ```
 
-It checks both downloads' MD5s first, and puts everything in
+`--download` in place of `--iso` and `--patch` downloads both, as the app
+does: resumed if a download stops, and deleted once the game folder is made.
+It checks both files' MD5s first, and puts everything in
 `~/Library/Application Support/Theme Park World` (`--dest` for elsewhere):
 the game folder, where its saves go, and the analysis, the lifted C and the
 build, under `build/`. It takes about ten minutes, and prints how to play at
@@ -152,7 +156,10 @@ runs in a child process, so a crash ends in an alert offering the log.
 - Started from a terminal, the game's output stays there, and arguments pass
   to it: `".../Theme Park World.app/Contents/MacOS/Theme Park World" --windowed`.
 - `TPW_HOME` points the app at another game folder. `TPW_ISO` and
-  `TPW_PATCH` fill in the setup window's two files and start the build.
+  `TPW_PATCH` give it your own two files and start the build.
+  `TPW_DOWNLOAD_BASE` downloads them from elsewhere.
+- For tests: `TPW_BUILD_NOW` presses Download and Build, and `TPW_PLAY_NOW`
+  presses Play, once the game is built.
 - `TPW_SNAPSHOT=DIR` draws the setup window's states into DIR as PNGs.
 
 ### Releases
