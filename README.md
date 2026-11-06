@@ -86,14 +86,34 @@ some-folder/
 
 with the pending branches merged in, as above.
 
+### In one command
+
+With the Python packages installed (`uv venv .venv && uv pip install
+--python .venv/bin/python pefile capstone unicorn`), `tools/install/install.py`
+does every step below, from the disc image to a compiled game:
+
+```
+.venv/bin/python -I tools/install/install.py --iso TPWORLD.ISO --patch themeparkworld20patch.zip
+```
+
+It checks both downloads' MD5s first, and puts everything in
+`~/Library/Application Support/Theme Park World` (`--dest` for elsewhere):
+the game folder, where its saves go, and the analysis, the lifted C and the
+build, under `build/`. It takes about ten minutes, and prints how to play at
+the end. Run again, it redoes only what is out of date: after a host fix only
+the compile, after a lifter fix the lift too, and the disc and patch are
+needed again only if the disc's steps change. Saves are kept.
+
+### Step by step
+
 1. Python packages:
    ```
    uv venv .venv && uv pip install --python .venv/bin/python pefile capstone unicorn
    ```
 2. The game folder: the disc's files, patched to 2.0, with the game
-   unwrapped from SafeDisc over its loader (needs `p7zip`):
+   unwrapped from SafeDisc over its loader:
    ```
-   mkdir -p work && 7z x -owork/cd TPWORLD.ISO
+   python3 -I tools/disc/iso.py TPWORLD.ISO work/cd
    .venv/bin/python -I tools/rtpatch/apply.py themeparkworld20patch.zip work/cd work/v20
    .venv/bin/python -I tools/safedisc/unwrap.py --cd work/v20 --iso TPWORLD.ISO -o work/unwrap/TP.EXE
    cp -Rc work/v20 game && cp work/unwrap/TP.EXE game/TP.EXE && rm game/TP.ICD

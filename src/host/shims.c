@@ -23,6 +23,41 @@ static void k_MapViewOfFileEx(void) {
     g_esp += 4;
 }
 
+/* The disc in its drive. The game unwrapped from SafeDisc still looks for its
+ * CD before it starts: a drive of type DRIVE_CDROM whose volume label is the
+ * disc's, TPWORLD (sub_005AA500; the no-CD release skips it). The game folder
+ * has every file from the disc, so D: is the game folder, as a CD-ROM. */
+#define TPW_CD 'D'
+static int is_cd(const char *root) { return root && (root[0] & ~0x20) == TPW_CD; }
+
+static void k_GetLogicalDrives(void) { RET(0x4u | (1u << (TPW_CD - 'A')) | (1u << 25), 0); }  /* C:, D:, Z: */
+static void k_GetLogicalDriveStringsA(void) {           /* (n, buf) */
+    static const char s[] = "C:\\\0D:\\\0Z:\\\0";
+    if (A32(0) < sizeof s) RET((uint32_t)sizeof s, 2);
+    memcpy(APTR(1), s, sizeof s);
+    RET((uint32_t)sizeof s - 1, 2);
+}
+/* As win32hle answers it (DRIVE_FIXED for a mapped drive), D: a CD-ROM. */
+static void k_GetDriveTypeA(void) {
+    const char *r = ASTR(0);
+    char path[16], host[1024];
+    if (!r || !*r) RET(3u, 1);
+    if (is_cd(r)) RET(5u, 1);                            /* DRIVE_CDROM */
+    snprintf(path, sizeof path, "%c:\\", r[0]);
+    RET(hle_host_path(path, host, sizeof host) && host[0] ? 3u : 1u, 1);
+}
+/* As win32hle answers it, D: the disc. */
+static void k_GetVolumeInformationA(void) {             /* (root, name, nameN, &serial, &maxComp, &flags, fs, fsN) */
+    int cd = is_cd(ASTR(0));
+    char *name = ASTR(1), *fs = ASTR(6);
+    if (name && A32(2)) snprintf(name, A32(2), "%s", cd ? "TPWORLD" : "HLE");
+    if (A32(3)) MEM32(A32(3)) = cd ? 0x0A2B3C4Du : 0x1234ABCDu;
+    if (A32(4)) MEM32(A32(4)) = cd ? 110 : 255;
+    if (A32(5)) MEM32(A32(5)) = cd ? 0x4u : 0x3u;        /* Joliet's Unicode names; case-preserved */
+    if (fs && A32(7)) snprintf(fs, A32(7), "%s", cd ? "CDFS" : "NTFS");
+    RET(1, 8);
+}
+
 /* GetFileAttributesA as win32hle answers it, logged with TPW_PROBETRACE: the
  * game finds its data by probing paths. */
 static uint32_t g_get_file_attributes;       /* the original's shim VA */
@@ -293,6 +328,10 @@ const win32hle_shim tpw_shims[] = {
     { "tpw!MapViewOfFile", k_MapViewOfFile },
     { "tpw!UnmapViewOfFile", k_UnmapViewOfFile },
     { "IsDBCSLeadByte", k_IsDBCSLeadByte },
+    { "GetLogicalDrives", k_GetLogicalDrives },
+    { "GetLogicalDriveStringsA", k_GetLogicalDriveStringsA },
+    { "GetDriveTypeA", k_GetDriveTypeA },
+    { "GetVolumeInformationA", k_GetVolumeInformationA },
     { "MapViewOfFileEx", k_MapViewOfFileEx },
     { "GetKeyboardLayout", u_GetKeyboardLayout },
     { "GetKeyboardLayoutList", u_GetKeyboardLayoutList },
