@@ -3,12 +3,13 @@
 #
 #   app/linux/build-flatpak.sh [--version 1.2.0] OUT
 #
-# OUT/repo gets the commit (branch stable), unsigned: app/linux/publish.sh
-# merges the architectures, signs and makes the repository players add. The
-# app is built from this repository's HEAD, checked-in files only (never the
-# game), and pcrecomp at app/pcrecomp.lock. Needs flatpak-builder and the
-# Flathub remote (for org.freedesktop.Sdk). FLATPAK_BUILDER_ARGS: extra
-# arguments (--disable-rofiles-fuse in a container without FUSE).
+# OUT/repo gets the commit (branch stable), unsigned: cpressland/flatpak's
+# publish.sh merges the architectures (and other games), signs and makes the
+# repository players add. The app is built from this repository's HEAD,
+# checked-in files only (never the game), and pcrecomp at app/pcrecomp.lock.
+# Needs flatpak-builder and the Flathub remote (for org.freedesktop.Sdk).
+# FLATPAK_BUILDER_ARGS: extra arguments (--disable-rofiles-fuse in a
+# container without FUSE).
 set -euo pipefail
 
 version=

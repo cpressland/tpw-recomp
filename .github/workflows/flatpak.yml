@@ -1,12 +1,12 @@
-# A tag v1.2.3 builds the Flatpak for x86-64 and arm64 (app/linux/build-flatpak.sh)
-# and publishes the signed repository to GitHub Pages (app/linux/publish.sh),
-# served as flatpak.cpressland.io. Nothing of the game is in it. Run by hand
-# (workflow_dispatch) it does the same from the branch chosen; a pull request
-# touching the Flatpak runs the builds alone.
+# A tag v1.2.3 builds the Flatpak for x86-64 and arm64 (app/linux/build-flatpak.sh),
+# attaches both OSTree repositories to the `flatpak` release (flatpak-ARCH.tar)
+# and has cpressland/flatpak publish them, signed, at flatpak.cpressland.io.
+# Nothing of the game is in them. Run by hand on main it does the same; a
+# pull request touching the Flatpak runs the builds alone.
 #
-# Needs the FLATPAK_GPG_PRIVATE_KEY secret (its public half is
-# app/linux/flatpak-signing-key.asc), Pages set to deploy from Actions, and
-# the github-pages environment open to v* tags.
+# FLATPAK_HUB_TOKEN (optional): a fine-grained token with Actions: Read and
+# write on cpressland/flatpak, to publish at once; without it, that
+# repository's daily run picks the builds up.
 name: flatpak
 
 on:
@@ -65,43 +65,41 @@ jobs:
           path: ${{ runner.temp }}/repo-${{ matrix.arch }}.tar
           retention-days: 7
 
-  publish:
+  release:
     needs: build
-    if: github.event_name != 'pull_request'
+    if: >-
+      github.event_name != 'pull_request' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-24.04
     permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      contents: write
+    env:
+      GH_REPO: ${{ github.repository }}
+      HUB_TOKEN: ${{ secrets.FLATPAK_HUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v5
-
-      - name: flatpak and ostree
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq flatpak ostree
-
       - uses: actions/download-artifact@v4
         with:
           pattern: repo-*
-          path: ${{ runner.temp }}/arch
+          merge-multiple: true
+          path: ${{ runner.temp }}/in
 
-      - name: Sign and make the site
+      - name: The flatpak release
         env:
-          FLATPAK_GPG_PRIVATE_KEY: ${{ secrets.FLATPAK_GPG_PRIVATE_KEY }}
-          FLATPAK_URL: ${{ vars.FLATPAK_URL || 'https://flatpak.cpressland.io' }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          repos=()
-          for t in "$RUNNER_TEMP"/arch/*/*.tar; do
-            d="${t%.tar}"; mkdir -p "$d"; tar -C "$d" -xf "$t"; repos+=("$d/repo")
-          done
-          app/linux/publish.sh "$RUNNER_TEMP/site" "${repos[@]}"
+          cd "$RUNNER_TEMP/in"
+          for t in repo-*.tar; do mv "$t" "flatpak-${t#repo-}"; done
+          if gh release view flatpak > /dev/null 2>&1; then
+            gh api -X PATCH "repos/$GH_REPO/git/refs/tags/flatpak" -f sha="$GITHUB_SHA" -F force=true > /dev/null
+          else
+            gh release create flatpak --prerelease --latest=false --target "$GITHUB_SHA" \
+              --title "Flatpak builds" \
+              --notes "The latest Flatpak builds, which https://flatpak.cpressland.io serves (cpressland/flatpak signs and publishes them). Install from there, not from here."
+          fi
+          gh release upload flatpak flatpak-*.tar --clobber
 
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: ${{ runner.temp }}/site
-
-      - id: deploy
-        uses: actions/deploy-pages@v4
+      - name: Publish
+        if: env.HUB_TOKEN != ''
+        env:
+          GH_TOKEN: ${{ secrets.FLATPAK_HUB_TOKEN }}
+        run: gh workflow run publish --repo cpressland/flatpak

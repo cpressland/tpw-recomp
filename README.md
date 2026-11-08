@@ -58,7 +58,7 @@ flatpak install --user https://flatpak.cpressland.io/io.cpressland.ThemeParkWorl
 ```
 
 or open that link in a browser, which hands it to your software centre. It
-adds the `theme-park-world` remote, signed by `app/linux/flatpak-signing-key.asc`,
+adds the `cpressland` remote ([cpressland/flatpak](https://github.com/cpressland/flatpak)),
 and fetches the freedesktop SDK from Flathub (the compiler the build needs).
 Updates come with your other Flatpaks.
 
@@ -205,10 +205,11 @@ merges.
 
 The same tag runs `.github/workflows/flatpak.yml`: `app/linux/build-flatpak.sh`
 builds the Flatpak on x86-64 and arm64 runners (from the tagged commit's
-checked-in files and pcrecomp at the lock), and `app/linux/publish.sh` merges
-them into one OSTree repository, signs it with the `FLATPAK_GPG_PRIVATE_KEY`
-secret and deploys it to GitHub Pages, served as `flatpak.cpressland.io`.
-The repository holds the latest release only. `app/linux/launcher.c` is the
+checked-in files and pcrecomp at the lock) and attaches them to the
+`flatpak` release. [cpressland/flatpak](https://github.com/cpressland/flatpak)
+signs and publishes them at `flatpak.cpressland.io`, which holds the latest
+build only; the `FLATPAK_HUB_TOKEN` secret lets this workflow start that at
+once (otherwise it runs each day). `app/linux/launcher.c` is the
 Linux launcher (SDL, as the game is); `TPW_LAUNCHER_SHOT=FILE.bmp` with
 `TPW_LAUNCHER_STATE=setup|working|ready|failed|crashed` draws one screen.
 
