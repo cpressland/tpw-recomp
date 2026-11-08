@@ -21,6 +21,23 @@
   </description>
   <launchable type="desktop-id">io.cpressland.ThemeParkWorld.desktop</launchable>
   <url type="homepage">https://github.com/cpressland/tpw-recomp</url>
+  <url type="bugtracker">https://github.com/cpressland/tpw-recomp/issues</url>
+  <url type="vcs-browser">https://github.com/cpressland/tpw-recomp</url>
+  <!-- The launcher's own screens only: the game's are EA's art. -->
+  <screenshots>
+    <screenshot type="default">
+      <caption>The first run downloads the game and builds it</caption>
+      <image>https://raw.githubusercontent.com/cpressland/tpw-recomp/main/app/linux/screenshots/setup.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Building the game on this computer</caption>
+      <image>https://raw.githubusercontent.com/cpressland/tpw-recomp/main/app/linux/screenshots/building.png</image>
+    </screenshot>
+  </screenshots>
+  <branding>
+    <color type="primary" scheme_preference="light">#8e4585</color>
+    <color type="primary" scheme_preference="dark">#3c3a8c</color>
+  </branding>
   <content_rating type="oars-1.1"/>
   <supports>
     <control>pointing</control>
