@@ -17,7 +17,7 @@ OUT=${OUT:-build-app}
 APP="$OUT/Theme Park World.app"
 C="$APP/Contents"
 T="$OUT/toolchain"
-VERSION=${VERSION:-$(git describe --tags --always 2>/dev/null | sed 's/^v//')}
+VERSION=${VERSION:-$(git describe --tags --match 'v[0-9]*' --always 2>/dev/null | sed 's/^v//')}
 BUILD=${BUILD:-$(git rev-list --count HEAD 2>/dev/null || echo 1)}
 
 [ -x "$T/python/bin/python3" ] || app/toolchain.sh
