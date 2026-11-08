@@ -148,6 +148,21 @@ def find_pcrecomp(given):
     raise Failed('no pcrecomp found: give --pcrecomp, or clone it beside this repository (README)')
 
 
+def build_jobs():
+    """How many compilers at once: one a core, but no more than the memory
+    holds, as gcc takes up to 1.5 GB on the largest lifted files (a Steam
+    Deck has 8 threads and 16 GB, shared with the system). TPW_JOBS: own count."""
+    own = os.environ.get('TPW_JOBS')
+    if own and own.isdigit() and int(own) > 0:
+        return int(own)
+    try:
+        mem = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')
+    except (ValueError, OSError):
+        mem = 0
+    cpus = os.cpu_count() or 1
+    return max(1, min(cpus, mem // (2 << 30))) if mem else cpus
+
+
 def find_tools():
     """CMake and Ninja: this Python's own packages first (the app's), then the PATH."""
     try:
@@ -402,7 +417,7 @@ class Install:
             self.state['host_config'] = config
             self.save_state()
         say('compiling (a few minutes the first time)...')
-        self.run(self.cmake, '--build', self.host)
+        self.run(self.cmake, '--build', self.host, '-j', str(build_jobs()))
 
     # ---- the order -------------------------------------------------------
 

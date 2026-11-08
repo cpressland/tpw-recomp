@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.cpressland.ThemeParkWorld</id>
+  <name>Theme Park World</name>
+  <summary>Bullfrog's 1999 park builder, recompiled to run natively</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="io.cpressland">
+    <name>Chris Pressland</name>
+  </developer>
+  <description>
+    <p>
+      A static recompilation of Theme Park World 2.0: the original game's code
+      translated to C and compiled for this computer, with Windows' parts
+      answered natively. No emulator, no Wine.
+    </p>
+    <p>
+      The first time it runs, it downloads the game's disc image and its 2.0
+      patch and builds the game from them, which takes 10 to 20 minutes.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.cpressland.ThemeParkWorld.desktop</launchable>
+  <url type="homepage">https://github.com/cpressland/tpw-recomp</url>
+  <content_rating type="oars-1.1"/>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+    <control>gamepad</control>
+  </supports>
+  <releases>
+    <release version="{version}" date="{date}"/>
+  </releases>
+</component>

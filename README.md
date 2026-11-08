@@ -45,6 +45,31 @@ When an update needs the game rebuilt, it does that on its next launch, in a
 few minutes, without downloading the disc again. Your parks and saves are
 kept in `~/Library/Application Support/Theme Park World`.
 
+## Playing on Linux and Steam Deck
+
+Theme Park World is a Flatpak for any Linux on x86-64 or arm64: a Steam
+Deck, Fedora, CachyOS, Ubuntu and the rest. As on a Mac, nothing of the game
+is in it: the first run downloads the disc image and the 2.0 patch and
+builds the game, which takes 10 to 20 minutes (a Steam Deck is at the slow
+end).
+
+```
+flatpak install --user https://flatpak.cpressland.io/io.cpressland.ThemeParkWorld.flatpakref
+```
+
+or open that link in a browser, which hands it to your software centre. It
+adds the `theme-park-world` remote, signed by `app/linux/flatpak-signing-key.asc`,
+and fetches the freedesktop SDK from Flathub (the compiler the build needs).
+Updates come with your other Flatpaks.
+
+The window offers **Download and Build**, then **Play**. A mouse, the
+keyboard, the touch screen or a controller (D-pad and A) all work it. On a
+Steam Deck, install it in Desktop Mode (Konsole, or Discover with the link),
+then **Add a Non-Steam Game** in Steam to play it from Game Mode. The game,
+its saves and the logs are in `~/.var/app/io.cpressland.ThemeParkWorld/data/theme-park-world`.
+
+Linux draws with the software renderer for now (Metal is the Mac's).
+
 ## What you need
 
 Nothing from the game is in this repository, and nothing generated from it.
@@ -177,6 +202,15 @@ own Ed25519 signature: the workflow signs with the `SPARKLE_PRIVATE_KEY`
 secret, and the app holds the public half, `app/sparkle-public-key.txt`.
 pcrecomp is the commit `app/pcrecomp.lock` names: `main` with the pending
 merges.
+
+The same tag runs `.github/workflows/flatpak.yml`: `app/linux/build-flatpak.sh`
+builds the Flatpak on x86-64 and arm64 runners (from the tagged commit's
+checked-in files and pcrecomp at the lock), and `app/linux/publish.sh` merges
+them into one OSTree repository, signs it with the `FLATPAK_GPG_PRIVATE_KEY`
+secret and deploys it to GitHub Pages, served as `flatpak.cpressland.io`.
+The repository holds the latest release only. `app/linux/launcher.c` is the
+Linux launcher (SDL, as the game is); `TPW_LAUNCHER_SHOT=FILE.bmp` with
+`TPW_LAUNCHER_STATE=setup|working|ready|failed|crashed` draws one screen.
 
 ### Step by step
 

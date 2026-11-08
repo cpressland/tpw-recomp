@@ -1,0 +1,101 @@
+# A tag v1.2.3 builds the Flatpak for x86-64 and arm64 (app/linux/build-flatpak.sh)
+# and publishes the signed repository to GitHub Pages (app/linux/publish.sh),
+# served as flatpak.cpressland.io. Nothing of the game is in it. Run by hand
+# (workflow_dispatch) it does the same from the branch chosen; a pull request
+# touching the Flatpak runs the builds alone.
+#
+# Needs the FLATPAK_GPG_PRIVATE_KEY secret (its public half is
+# app/linux/flatpak-signing-key.asc), Pages set to deploy from Actions, and
+# the github-pages environment open to v* tags.
+name: flatpak
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+  pull_request:                # the builds only, not the publish
+    paths: ["app/linux/**", "tools/install/**", ".github/workflows/flatpak.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flatpak-${{ github.event_name == 'pull_request' && github.ref || 'publish' }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0          # the version, from the tags
+
+      - name: flatpak-builder and the freedesktop SDK
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq flatpak flatpak-builder
+          # bubblewrap's sandbox needs user namespaces, which Ubuntu restricts
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+
+      - name: Build
+        run: |
+          version=
+          if [ "$GITHUB_REF_TYPE" = tag ]; then version="${GITHUB_REF_NAME#v}"; fi
+          app/linux/build-flatpak.sh ${version:+--version "$version"} "$RUNNER_TEMP/fp"
+          tar -C "$RUNNER_TEMP/fp" -cf "$RUNNER_TEMP/repo-${{ matrix.arch }}.tar" repo
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: repo-${{ matrix.arch }}
+          path: ${{ runner.temp }}/repo-${{ matrix.arch }}.tar
+          retention-days: 7
+
+  publish:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: flatpak and ostree
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq flatpak ostree
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: repo-*
+          path: ${{ runner.temp }}/arch
+
+      - name: Sign and make the site
+        env:
+          FLATPAK_GPG_PRIVATE_KEY: ${{ secrets.FLATPAK_GPG_PRIVATE_KEY }}
+          FLATPAK_URL: ${{ vars.FLATPAK_URL || 'https://flatpak.cpressland.io' }}
+        run: |
+          repos=()
+          for t in "$RUNNER_TEMP"/arch/*/*.tar; do
+            d="${t%.tar}"; mkdir -p "$d"; tar -C "$d" -xf "$t"; repos+=("$d/repo")
+          done
+          app/linux/publish.sh "$RUNNER_TEMP/site" "${repos[@]}"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ runner.temp }}/site
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
