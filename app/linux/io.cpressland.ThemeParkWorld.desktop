@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Theme Park World
+Comment=Build and run your own theme park
+Exec=theme-park-world
+Icon=io.cpressland.ThemeParkWorld
+Terminal=false
+Categories=Game;Simulation;
+Keywords=theme;park;rollercoaster;bullfrog;
