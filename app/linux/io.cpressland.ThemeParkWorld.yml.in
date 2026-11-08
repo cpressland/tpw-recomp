@@ -45,7 +45,8 @@ modules:
     # The game includes <SDL2/SDL_ttf.h>: its folder too, as /usr/include is
     # for the runtime's SDL2 (the player's compile has no -I/app/include).
     post-install:
-      - sed -i 's|^Cflags: |Cflags: -I${includedir} |' /app/lib/pkgconfig/SDL2_ttf.pc
+      - |
+        sed -i 's|^Cflags: |Cflags: -I${includedir} |' /app/lib/pkgconfig/SDL2_ttf.pc
     cleanup:
       - /lib/cmake
 
