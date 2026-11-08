@@ -104,9 +104,13 @@ static int desktop_size(int *w, int *h) {
     return 0;
 }
 
-static int set_resolution(const char *game, const char *want) {
+/* The override's host path, through drive C: (the game folder): its folder is
+ * Data on the disc, and a Linux file system minds the case. */
+static void resolution_path(char *path, size_t n) { hle_host_path("C:\\Data\\Resolution.sam", path, n); }
+
+static int set_resolution(const char *want) {
     char path[PATH_MAX + 32];
-    snprintf(path, sizeof path, "%s/data/Resolution.sam", game);
+    resolution_path(path, sizeof path);
     if (!strcmp(want, "options")) { remove(path); return 0; }
     int w = 0, h = 0, n = -1;
     if (!strcmp(want, "native")) {
@@ -120,7 +124,7 @@ static int set_resolution(const char *game, const char *want) {
     }
     for (int i = 1; i < 8; i++) if (g_res[i][0] == w && g_res[i][1] == h) n = i;
     FILE *f = fopen(path, "w");
-    if (!f) return -1;
+    if (!f) { fprintf(stderr, "--resolution: cannot write %s\n", path); return -1; }
     fprintf(f, "#\n#\tTheme Park World Resolution Override, written by tpw --resolution\n#\n");
     if (n < 0) fprintf(f, TPW_SIZE_TAG " %dx%d\n", w, h), n = 7;
     fprintf(f, "\nRes.RESOLUTION\t%d\n", n);
@@ -129,10 +133,10 @@ static int set_resolution(const char *game, const char *want) {
 }
 
 /* The size a run uses: a size of our own, if the override names one. */
-static void read_resolution(const char *game) {
+static void read_resolution(void) {
     char path[PATH_MAX + 32], line[128];
     unsigned w, h;
-    snprintf(path, sizeof path, "%s/data/Resolution.sam", game);
+    resolution_path(path, sizeof path);
     FILE *f = fopen(path, "r");
     if (!f) return;
     while (fgets(line, sizeof line, f))
@@ -369,8 +373,8 @@ __attribute__((visibility("default"))) int tpw_main(int argc, char **argv) {
         printf("\n(dry run: image mapped and bound; --run enters 0x%08X)\n", tpw_entry_va);
         return 0;
     }
-    if (g_resolution && set_resolution(game_full, g_resolution) != 0) return 1;
-    read_resolution(game_full);
+    if (g_resolution && set_resolution(g_resolution) != 0) return 1;
+    read_resolution();
     if (chdir(game_full) != 0) { fprintf(stderr, "cannot enter %s\n", game_full); return 1; }
     /* Full screen in its own Space, as a 1999 game ran: the game draws its own
      * cursor, and the mouse is held in the picture either way (Ctrl+Cmd lets go). */
