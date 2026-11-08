@@ -68,7 +68,9 @@ Steam Deck, install it in Desktop Mode (Konsole, or Discover with the link),
 then **Add a Non-Steam Game** in Steam to play it from Game Mode. The game,
 its saves and the logs are in `~/.var/app/io.cpressland.ThemeParkWorld/data/theme-park-world`.
 
-Linux draws with the software renderer for now (Metal is the Mac's).
+The game holds the mouse inside its picture while it has focus, as on a
+Mac: Ctrl+Super lets it go and a click takes it back. Linux draws with the
+software renderer for now (Metal is the Mac's).
 
 ## What you need
 

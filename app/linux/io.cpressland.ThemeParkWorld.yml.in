@@ -57,6 +57,11 @@ modules:
     build-commands:
       - python3 -m venv /app/venv
       - /app/venv/bin/pip install --no-index --no-deps --no-cache-dir *.whl
+    cleanup:
+      - /venv/bin/pip*                                 # pip only installs them: the player's build never uses it
+      - /venv/lib/python*/site-packages/pip
+      - /venv/lib/python*/site-packages/pip-*
+      - /venv/lib/python*/site-packages/unicorn/lib/*.a # 30 MB; Python loads libunicorn.so
     sources:
       - type: file
         url: https://files.pythonhosted.org/packages/54/16/12b82f791c7f50ddec566873d5bdd245baa1491bac11d15ffb98aecc8f8b/pefile-2024.8.26-py3-none-any.whl
