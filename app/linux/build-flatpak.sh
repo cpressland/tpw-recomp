@@ -19,7 +19,7 @@ out=$(mkdir -p "$1" && cd "$1" && pwd)
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(git -C "$here" rev-parse --show-toplevel)
 commit=$(git -C "$repo" rev-parse HEAD)
-[ -n "$version" ] || version=$(git -C "$repo" describe --tags --always | sed 's/^v//')
+[ -n "$version" ] || version=$(git -C "$repo" describe --tags --match 'v[0-9]*' --always | sed 's/^v//')
 if [ -n "$(git -C "$repo" status --porcelain --untracked-files=no)" ]; then
   echo "note: uncommitted changes are not in the build (it takes $commit)" >&2
 fi
