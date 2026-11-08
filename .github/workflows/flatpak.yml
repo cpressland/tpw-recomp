@@ -50,7 +50,13 @@ jobs:
         run: |
           version=
           if [ "$GITHUB_REF_TYPE" = tag ]; then version="${GITHUB_REF_NAME#v}"; fi
-          FLATPAK_BUILDER_ARGS=--user app/linux/build-flatpak.sh ${version:+--version "$version"} "$RUNNER_TEMP/fp"
+          # Up to three tries: a source download now and then stalls (what was
+          # fetched is kept in the state folder for the next).
+          for try in 1 2 3; do
+            FLATPAK_BUILDER_ARGS=--user app/linux/build-flatpak.sh ${version:+--version "$version"} "$RUNNER_TEMP/fp" && break
+            [ "$try" = 3 ] && exit 1
+            sleep 20
+          done
           tar -C "$RUNNER_TEMP/fp" -cf "$RUNNER_TEMP/repo-${{ matrix.arch }}.tar" repo
 
       - uses: actions/upload-artifact@v4
