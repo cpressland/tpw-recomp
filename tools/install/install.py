@@ -407,7 +407,11 @@ class Install:
 
     def compile(self):
         # A build folder made another way (other sources, other SDL) starts again.
-        config = [self.tpw_src, self.pc_src, self.sdl or 'pkg-config', self.cmake]
+        # From pkg-config, SDL's flags themselves: CMake keeps what it found
+        # first, and an app update (the Flatpak's) can move them.
+        sdl = self.sdl or subprocess.run(['pkg-config', '--cflags', '--libs', 'sdl2', 'SDL2_ttf'],
+                                         capture_output=True, text=True).stdout.strip()
+        config = [self.tpw_src, self.pc_src, sdl, self.cmake]
         if self.state.get('host_config') != config:
             shutil.rmtree(self.host, ignore_errors=True)
         if not os.path.exists(os.path.join(self.host, 'build.ninja')):
