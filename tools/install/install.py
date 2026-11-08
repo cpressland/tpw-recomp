@@ -3,7 +3,8 @@
     .venv/bin/python -I tools/install/install.py --iso TPWORLD.ISO --patch themeparkworld20patch.zip
 
 Every step of the README's build, into one folder (by default the Mac's
-Application Support, where Theme Park World.app looks):
+Application Support, where Theme Park World.app looks; on Linux
+$XDG_DATA_HOME/theme-park-world):
 
     game/             the disc's files patched to 2.0, the game unwrapped from
                       SafeDisc; its saves and settings are written here
@@ -11,7 +12,7 @@ Application Support, where Theme Park World.app looks):
                       and pcrecomp (SOURCES), so the build's paths never move
     build/analysis/   the function catalog and the rest of the lift's inputs
     build/gen/        the lifted C
-    build/host/       the compiled game: libtpw.dylib, which the app loads
+    build/host/       the compiled game: libtpw.dylib (.so), which the app loads
                       (app/Launcher), and tpw, the same as a program
     install.json      what each part was made from
 
@@ -54,9 +55,15 @@ PATCH_MD5 = '30b872ae27c4a053ef9ca07c720ca461'
 GAME_MD5 = '3c4084844aec199c321d466b8032f4a0'
 # Bumped when the disc's steps (extract, patch, unwrap) change what they make.
 DATA_VERSION = 1
-DEFAULT_DEST = os.path.expanduser('~/Library/Application Support/Theme Park World')
+if sys.platform == 'darwin':
+    DEFAULT_DEST = os.path.expanduser('~/Library/Application Support/Theme Park World')
+    LIBRARY = 'libtpw.dylib'
+else:
+    DEFAULT_DEST = os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share'),
+                                'theme-park-world')
+    LIBRARY = 'libtpw.so'
 # What a player's run writes into the game folder, carried over a new one.
-KEEP = ('save', os.path.join('data', 'Resolution.sam'))
+KEEP = ('save', os.path.join('Data', 'Resolution.sam'))   # as the disc spells them: Linux minds the case
 SPACE_NEEDED = 3 << 30       # the disc twice over, the lift and the build, at their peak
 
 # --download: the two files, from where this project keeps copies of them
@@ -215,7 +222,7 @@ class Install:
         """The parts out of date, in order: one stale part makes all after it so."""
         if not os.path.isdir(self.game):
             self.state.pop('data', None)
-        if not os.path.exists(os.path.join(self.host, 'libtpw.dylib')):
+        if not os.path.exists(os.path.join(self.host, LIBRARY)):
             self.state.pop('host', None)
         out = []
         for k in ('data', 'analysis', 'lift', 'host'):
@@ -232,8 +239,11 @@ class Install:
                                      capture_output=True).returncode]
         if missing:
             raise Failed(f'this Python lacks {", ".join(missing)} (README: Python packages)')
-        if subprocess.run(['xcrun', '--find', 'clang'], capture_output=True).returncode:
-            raise Failed("no C compiler: install Xcode's command line tools (xcode-select --install)")
+        if sys.platform == 'darwin':
+            if subprocess.run(['xcrun', '--find', 'clang'], capture_output=True).returncode:
+                raise Failed("no C compiler: install Xcode's command line tools (xcode-select --install)")
+        elif not (os.environ.get('CC') or shutil.which('cc') or shutil.which('clang') or shutil.which('gcc')):
+            raise Failed('no C compiler: install clang (or gcc), e.g. the build-essential package')
         self.cmake, self.ninja = find_tools()
         if not self.cmake or not self.ninja:
             raise Failed('no cmake or ninja (README: prerequisites)')
@@ -430,7 +440,8 @@ class Install:
             say(f'    {title.lower()}: {time.time() - t:.0f} s')
         say('@done')
         tpw = os.path.join(self.host, 'tpw')
-        say('done. Play with Theme Park World.app (app/build-app.sh), or from a terminal:')
+        say('done. Play with Theme Park World.app (app/build-app.sh), or from a terminal:' if sys.platform == 'darwin'
+            else 'done. Play from a terminal:')
         say(f'  "{tpw}" --game "{self.game}" --run --resolution native')
 
 
