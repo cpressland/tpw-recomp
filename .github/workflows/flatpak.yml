@@ -50,7 +50,7 @@ jobs:
         run: |
           version=
           if [ "$GITHUB_REF_TYPE" = tag ]; then version="${GITHUB_REF_NAME#v}"; fi
-          app/linux/build-flatpak.sh ${version:+--version "$version"} "$RUNNER_TEMP/fp"
+          FLATPAK_BUILDER_ARGS=--user app/linux/build-flatpak.sh ${version:+--version "$version"} "$RUNNER_TEMP/fp"
           tar -C "$RUNNER_TEMP/fp" -cf "$RUNNER_TEMP/repo-${{ matrix.arch }}.tar" repo
 
       - uses: actions/upload-artifact@v4
