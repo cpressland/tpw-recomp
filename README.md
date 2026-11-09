@@ -273,6 +273,12 @@ Linux launcher (SDL, as the game is); `TPW_LAUNCHER_SHOT=FILE.bmp` with
    it go, a click takes it back, and switching apps lets it go too
    (`--free-mouse` turns this off). F12 cycles the scaling.
 
+   The game draws as many frames as it can, as it did on Windows, where its
+   monitor's refresh held it back. Here each frame is held for whole
+   refreshes, never fewer than keep it near 60 a second (2 on a 120 Hz
+   display), and the time between is idle: `HLE_MAX_FPS=0` lifts the cap.
+   On an M1 Pro a park takes about 40% of one core, down from 120%.
+
 ## License
 
 MIT for this repository's own code. Theme Park World is © Electronic Arts;
