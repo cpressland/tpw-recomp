@@ -60,7 +60,10 @@ list(FILTER HLE_SOURCES EXCLUDE REGEX "_selftest\\.c$")
 add_library(tpw_obj OBJECT src/host/main.c src/host/cpu.c src/host/qmixer.c src/host/script.c src/host/shims.c src/host/widescreen.c ${HLE_SOURCES} ${GEN_SOURCES})
 set_target_properties(tpw_obj PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(tpw_obj PRIVATE src/host ${GEN_DIR} ${HLE} ${PCRECOMP}/runtime/recomp32)
-target_compile_definitions(tpw_obj PRIVATE RECOMP_RETADDR=0u RECOMP_LOCAL_REGS)
+# RECOMP_X87_WINDOW: the lifted x87 stack's push and pop move a pointer rather
+# than all eight registers (pcrecomp's recomp_types.h); the game's lighting
+# and transforms are full of them.
+target_compile_definitions(tpw_obj PRIVATE RECOMP_RETADDR=0u RECOMP_LOCAL_REGS RECOMP_X87_WINDOW)
 if(CMAKE_SIZEOF_VOID_P EQUAL 4)
   target_compile_definitions(tpw_obj PRIVATE RECOMP_FLAT_MEMORY)
 else()
