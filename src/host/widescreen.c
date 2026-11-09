@@ -55,22 +55,31 @@ static float squeeze(void) {
 }
 
 /* Each widget's anchor: -2 a layer, -1 left, 0 centre, 1 right. Keyed by the
- * widget's address; a new widget at a freed one's address overwrites it. */
-#define WTAB 4096
-static uint32_t g_wkey[WTAB];
+ * widget's address; a new widget at a freed one's address overwrites it.
+ * Nothing tells us a widget is gone, so the table would fill: hours of play
+ * open dialogs at thousands of addresses, and once full a new dialog's
+ * widgets found no group, each placed on its own, so a dialog came out
+ * differently from one open to the next. A key lives within WPROBE slots of
+ * its hash; when those are all taken the one least recently made or asked
+ * for gives way (a long-lived parent is asked for by every child it gets). */
+#define WBITS  14
+#define WTAB   (1u << WBITS)
+#define WPROBE 32
+static uint32_t g_wkey[WTAB], g_wused[WTAB], g_wclock;
 static int8_t g_wanchor[WTAB];
 
 static int8_t *anchor_of(uint32_t w, int add) {
-    uint32_t i = (w >> 4) & (WTAB - 1);
-    for (int n = 0; n < WTAB; n++, i = (i + 1) & (WTAB - 1)) {
-        if (g_wkey[i] == w) return &g_wanchor[i];
-        if (!g_wkey[i]) {
-            if (!add) return NULL;
-            g_wkey[i] = w;
-            return &g_wanchor[i];
-        }
+    uint32_t i = ((w >> 3) * 2654435761u) >> (32 - WBITS), old = i;
+    int full = 1;
+    for (int n = 0; n < WPROBE; n++, i = (i + 1) & (WTAB - 1)) {
+        if (g_wkey[i] == w) { g_wused[i] = ++g_wclock; return &g_wanchor[i]; }
+        if (!g_wkey[i]) { full = 0; break; }
+        if (g_wused[i] < g_wused[old]) old = i;
     }
-    return NULL;
+    if (!add) return NULL;
+    if (full) i = old;
+    g_wkey[i] = w, g_wused[i] = ++g_wclock;
+    return &g_wanchor[i];
 }
 
 static int16_t place(int x, int anchor, float k) {
