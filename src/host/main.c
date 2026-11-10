@@ -111,7 +111,10 @@ static void resolution_path(char *path, size_t n) { hle_host_path("C:\\Data\\Res
 static int set_resolution(const char *want) {
     char path[PATH_MAX + 32];
     resolution_path(path, sizeof path);
-    if (!strcmp(want, "options")) { remove(path); return 0; }
+    /* hle_path_changed: the path layer keeps directory listings, and the one
+     * resolution_path just read has no Resolution.sam on a first launch; the
+     * game would ask for it next and not find it (blank text, at its own size). */
+    if (!strcmp(want, "options")) { remove(path); hle_path_changed(); return 0; }
     int w = 0, h = 0, n = -1;
     if (!strcmp(want, "native")) {
         if (desktop_size(&w, &h) != 0) { fprintf(stderr, "--resolution native: no desktop size (%s)\n", SDL_GetError()); return -1; }
@@ -129,6 +132,7 @@ static int set_resolution(const char *want) {
     if (n < 0) fprintf(f, TPW_SIZE_TAG " %dx%d\n", w, h), n = 7;
     fprintf(f, "\nRes.RESOLUTION\t%d\n", n);
     fclose(f);
+    hle_path_changed();
     return 0;
 }
 
