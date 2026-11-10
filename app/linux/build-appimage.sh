@@ -26,7 +26,9 @@ version=
 while [ $# -gt 1 ]; do
   case $1 in
     --version) version=$2; shift 2 ;;
-    --apt) apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends $APT; shift ;;
+    --apt) echo "==> apt-get install"
+           apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends $APT >/dev/null
+           shift ;;
     *) break ;;
   esac
 done
@@ -58,7 +60,10 @@ cache=$out/cache
 fetch() {   # url sha256 [name] -> $cache/<name>
   local f="$cache/${3:-$(basename "$1")}"
   if [ ! -f "$f" ]; then
-    curl -fsSL --retry 3 --create-dirs -o "$f.part" "$1"
+    echo "==> $1"
+    # A stalled download fails and is tried again rather than waiting forever.
+    curl -fsSL --retry 5 --retry-all-errors --connect-timeout 30 --speed-limit 50000 --speed-time 60 \
+      --create-dirs -o "$f.part" "$1"
     mv "$f.part" "$f"
   fi
   echo "$2  $f" | sha256sum -c --status || { echo "checksum mismatch: $f" >&2; rm -f "$f"; exit 1; }
@@ -91,6 +96,7 @@ else
   rm -rf "$out/src/pcrecomp/.git"
 fi
 
+echo "==> SDL2 and SDL2_ttf"
 # SDL2 (everything it talks to opened at run time, from the player's system)
 # and SDL2_ttf with its own FreeType and HarfBuzz, into usr/.
 for t in SDL2-2.32.10 SDL2_ttf-2.24.0; do
@@ -113,6 +119,7 @@ sed -i 's|^prefix=.*|prefix=${pcfiledir}/../..|' "$u"/lib/pkgconfig/*.pc
 gcc -O2 -Wall -DTPW_VERSION="\"$version\"" "$repo/app/linux/launcher.c" -I"$u/include" -L"$u/lib" \
   -lSDL2_ttf -lSDL2 -Wl,-rpath,'$ORIGIN/../lib' -o "$u/bin/theme-park-world"
 
+echo "==> Python and its packages"
 # Python with the lift's packages, CMake, Ninja and pkgconf, pruned.
 tar -xzf "$cache/$PY" -C "$u"
 "$u/python/bin/python3" -I -m pip install -q --disable-pip-version-check --no-compile --only-binary :all: \
@@ -174,6 +181,7 @@ bad=$(find "$app" -iname '*.iso' -o -iname 'tp.exe' -o -iname 'themeparkworld20p
 [ -z "$bad" ] || { echo "game files in the AppImage: $bad" >&2; exit 1; }
 
 img=$out/Theme-Park-World-$version-$arch.AppImage
+echo "==> squashfs"
 rm -f "$out/AppDir.squashfs" "$img"
 mksquashfs "$app" "$out/AppDir.squashfs" -root-owned -noappend -comp zstd -Xcompression-level 19 -quiet
 cat "$cache/runtime-$arch" "$out/AppDir.squashfs" > "$img"
