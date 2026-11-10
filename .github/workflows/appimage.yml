@@ -1,0 +1,77 @@
+# A tag v1.2.3 builds the AppImage for x86-64 and arm64
+# (app/linux/build-appimage.sh) on Ubuntu 22.04, for an old enough glibc, and
+# attaches both to that tag's release (release.yml makes it). Nothing of the
+# game is in them. A pull request touching the AppImage runs the builds alone.
+name: appimage
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+  pull_request:
+    paths: ["app/linux/**", "tools/install/**", ".github/workflows/appimage.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    container: ubuntu:22.04
+    steps:
+      - name: git, for the checkout's history
+        run: apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates
+
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0          # the version, from the tags
+
+      - name: Build
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          version=
+          if [ "$GITHUB_REF_TYPE" = tag ]; then version="${GITHUB_REF_NAME#v}"; fi
+          app/linux/build-appimage.sh --apt ${version:+--version "$version"} "$RUNNER_TEMP/ai"
+          mkdir -p "$RUNNER_TEMP/up"
+          mv "$RUNNER_TEMP"/ai/Theme-Park-World-*.AppImage "$RUNNER_TEMP/up/"
+          # and under a name without the version, for releases/latest/download links
+          cp "$RUNNER_TEMP"/up/Theme-Park-World-*.AppImage "$RUNNER_TEMP/up/Theme-Park-World-${{ matrix.arch }}.AppImage"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appimage-${{ matrix.arch }}
+          path: ${{ runner.temp }}/up/*.AppImage
+          retention-days: 7
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: appimage-*
+          merge-multiple: true
+          path: up
+
+      - name: Attach to the release
+        run: |
+          # release.yml makes the release; it can still be building the DMG.
+          for try in $(seq 60); do
+            gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 && break
+            [ "$try" = 60 ] && { echo "no release $GITHUB_REF_NAME after 30 minutes" >&2; exit 1; }
+            sleep 30
+          done
+          gh release upload "$GITHUB_REF_NAME" up/*.AppImage --clobber

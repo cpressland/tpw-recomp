@@ -68,6 +68,20 @@ Steam Deck, install it in Desktop Mode (Konsole, or Discover with the link),
 then **Add a Non-Steam Game** in Steam to play it from Game Mode. The game,
 its saves and the logs are in `~/.var/app/io.cpressland.ThemeParkWorld/data/theme-park-world`.
 
+### Or as an AppImage
+
+Each release also has `Theme-Park-World-VERSION-x86_64.AppImage` and
+`-aarch64.AppImage`: one file, made executable and run, with no software
+centre or Flathub needed. Where the Flatpak takes its compiler from the
+freedesktop SDK, the AppImage carries its own (zig's clang), so the first run
+downloads and builds the game the same way, on a Steam Deck too. The game,
+its saves and the logs are in `~/.local/share/theme-park-world`, which also
+gets a link, `appimage`, to the running AppImage: the game's build finds its
+tools and SDL through it. `--install` runs the build without a window
+(`--install --iso TPWORLD.ISO --patch themeparkworld20patch.zip` for your own
+two files, `--install --status` to see what's out of date). Built by
+`app/linux/build-appimage.sh` on Ubuntu 22.04 (`.github/workflows/appimage.yml`).
+
 The game holds the mouse inside its picture while it has focus, as on a
 Mac: Ctrl+Super lets it go and a click takes it back. Linux draws with the
 software renderer for now (Metal is the Mac's).
