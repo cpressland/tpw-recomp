@@ -40,6 +40,10 @@ export PATH="$t/bin:$PATH"
 export CC="$t/bin/cc"
 export PKG_CONFIG_PATH="$t/lib/pkgconfig" PKG_CONFIG_LIBDIR="$t/lib/pkgconfig"
 export LDFLAGS="-Wl,-rpath,$t/lib"      # the game finds the AppImage's SDL
+# zig finds its libc headers from its own real path (this mount), and the
+# build's dependency records would name them there: an update would then
+# compile everything again. Through the link instead.
+export ZIG_LIB_DIR="$t/zig/lib"
 export ZIG_GLOBAL_CACHE_DIR="$home/build/zig-cache"
 export ZIG_LOCAL_CACHE_DIR="$home/build/zig-cache"
 
