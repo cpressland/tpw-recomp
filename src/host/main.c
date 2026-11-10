@@ -34,6 +34,7 @@ void recomp_dump_trace(const char *why) { (void)why; }
 
 extern const uint32_t tpw_entry_va;   /* recomp_dispatch.c */
 int  script_arg(int argc, char **argv, int i);   /* script.c */
+void pad_start(void);                             /* pad.c */
 void script_start(void);
 
 #define TPW_IMAGE_BASE 0x00400000u
@@ -44,6 +45,7 @@ static int g_windowed;                   /* --windowed: not full screen at launc
 static int g_free_mouse;                 /* --free-mouse: the pointer may leave the picture */
 static unsigned g_watchdog_s;
 static const char *g_resolution;         /* --resolution WxH | options */
+static int g_no_pad;                     /* --no-pad: leave game controllers alone (Steam Input's mouse, say) */
 #ifdef __APPLE__
 static const char *g_renderer = "metal";      /* --renderer metal | vulkan | software */
 #else
@@ -309,6 +311,7 @@ __attribute__((visibility("default"))) int tpw_main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--trace")) win32hle_trace = 1;
         else if (!strcmp(argv[i], "--resolution") && i + 1 < argc) g_resolution = argv[++i];
         else if (!strcmp(argv[i], "--renderer") && i + 1 < argc) g_renderer = argv[++i];
+        else if (!strcmp(argv[i], "--no-pad")) g_no_pad = 1;
         else if (!strcmp(argv[i], "--shot") && i + 1 < argc) {
             static char path[PATH_MAX];          /* absolute: the run enters the game folder */
             const char *p = argv[++i];
@@ -319,7 +322,7 @@ __attribute__((visibility("default"))) int tpw_main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--shot-after") && i + 1 < argc) g_shot_s = (unsigned)strtoul(argv[++i], NULL, 0);
         else if (!strcmp(argv[i], "--shot-every") && i + 1 < argc) g_shot_every = (unsigned)strtoul(argv[++i], NULL, 0);
         else {
-            printf("usage: tpw [--run] [--headless] [--windowed] [--free-mouse] [--resolution WxH|native|options] [--renderer metal|vulkan|software] [--game DIR] [--mute] [--watchdog S] [--trace] [--shot FILE.bmp] [--shot-after S] [--shot-every S]\n"
+            printf("usage: tpw [--run] [--headless] [--windowed] [--free-mouse] [--resolution WxH|native|options] [--renderer metal|vulkan|software] [--no-pad] [--game DIR] [--mute] [--watchdog S] [--trace] [--shot FILE.bmp] [--shot-after S] [--shot-every S]\n"
                    "           [--move x,y@s] [--click x,y@s] [--rclick x,y@s] [--key vk@s]\n");
             return !strcmp(argv[i], "--help") || !strcmp(argv[i], "-h") ? 0 : 1;
         }
@@ -384,6 +387,7 @@ __attribute__((visibility("default"))) int tpw_main(int argc, char **argv) {
      * cursor, and the mouse is held in the picture either way (Ctrl+Cmd lets go). */
     hle_screen_confine(!g_free_mouse);
     if (hle_screen_open(TPW_TITLE, !g_windowed, g_headless) != 0) return 1;
+    if (!g_headless && !g_no_pad) pad_start();     /* a game controller as the mouse and keys (pad.c) */
     /* Direct3D on the GPU (Metal, the default on a Mac; Vulkan, on Linux), or
      * in software (pcrecomp's d3d_raster.c), which each falls back to without
      * its GPU. */

@@ -57,7 +57,7 @@ list(FILTER HLE_SOURCES EXCLUDE REGEX "_selftest\\.c$")
 
 # Compiled once, linked twice: tpw, the program, and libtpw.dylib, the same
 # game for Theme Park World.app to load (app/launcher.m), entered at tpw_main.
-add_library(tpw_obj OBJECT src/host/main.c src/host/cpu.c src/host/qmixer.c src/host/script.c src/host/shims.c src/host/widescreen.c ${HLE_SOURCES} ${GEN_SOURCES})
+add_library(tpw_obj OBJECT src/host/main.c src/host/cpu.c src/host/pad.c src/host/qmixer.c src/host/script.c src/host/shims.c src/host/widescreen.c ${HLE_SOURCES} ${GEN_SOURCES})
 set_target_properties(tpw_obj PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(tpw_obj PRIVATE src/host ${GEN_DIR} ${HLE} ${PCRECOMP}/runtime/recomp32)
 # RECOMP_X87_WINDOW: the lifted x87 stack's push and pop move a pointer rather

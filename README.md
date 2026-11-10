@@ -87,6 +87,27 @@ Mac: Ctrl+Super lets it go and a click takes it back. Direct3D draws on the
 GPU through Vulkan (1.3, as Mesa's drivers on a Steam Deck and any recent
 desktop have), or in software where there is none.
 
+## Playing with a controller
+
+An Xbox controller, a Steam Deck's own controls or a PlayStation pad (any
+SDL knows) plays the game as a mouse and keys would, on a Mac or Linux:
+
+| Control | Does |
+|---|---|
+| Left stick | the cursor (at an edge, the park scrolls); pressed in: slow, for small things |
+| A | click; held, a drag (paths, sliders) |
+| B | right-click: cancel, back |
+| X, held | click on to build more of the same (Ctrl) |
+| Right stick | scroll the park |
+| LB / RB | rotate the park |
+| LT / RT | zoom out / in |
+| D-pad left / right | rotate the item being placed |
+| D-pad up / down | zoom a step |
+| Start | the pause menu; out of a dialog (Escape) |
+
+`--no-pad` leaves controllers alone (for Steam Input's own mouse, say). The
+mouse's wheel zooms too.
+
 ## What you need
 
 Nothing from the game is in this repository, and nothing generated from it.
