@@ -72,6 +72,11 @@ typedef struct {
     uint32_t played;                      /* ...and of those, played */
     uint32_t quiet;                       /* the silence the wave began with, in bytes */
     int sounded;                          /* ...and whether it has ended */
+    int handed;                           /* its tail went on in another channel */
+    int kept;                             /* the sound's own settings, from before a set-up for the next */
+    float kept_volume;
+    int kept_freq, kept_has_pos;
+    vec3 kept_pos;
     wave_t own;                           /* a spare's: the format of the tail it plays (the wave may go) */
     pthread_cond_t wake;
 } chan_t;
@@ -145,8 +150,15 @@ static void stop_channel(chan_t *c) {
         hle_block_end();
         pthread_mutex_lock(&g_mu);
     }
+    if (trace() && c->wave && c->wave->length && !c->handed && c->played + 4096 < c->quiet + c->wave->length) {
+        const wave_t *w = c->wave;
+        double bps = w->rate * w->channels * (w->bits / 8.0);
+        T("%.1fs CUT channel %d: %.2f s of %.2f s played, %.2f s given%s\n", hle_ticks_ms() / 1000.0 - g_t0, (int)(c - g_ch),
+          (c->played - (c->played < c->quiet ? c->played : c->quiet)) / bps, w->length / bps,
+          (c->pulled > c->quiet ? c->pulled - c->quiet : 0) / bps, c->eof ? ", stream ended" : "");
+    }
     c->playing = 0, c->paused = 0, c->eof = 0, c->head = c->tail = 0, c->frac = 0, c->wave = NULL;
-    c->stopping = 0;
+    c->stopping = 0, c->handed = 0, c->kept = 0;
     pthread_mutex_unlock(&g_mu);
 }
 
@@ -366,16 +378,20 @@ static void hand_tail(chan_t *c) {
     }
     chan_t *s = NULL;
     for (int i = NCHAN - 1; i >= 0 && n > 0 && !s; i--) if (!g_ch[i].open && !g_ch[i].playing) s = &g_ch[i];
+    if (n > 0 && !s) T("%.1fs channel %d: no free channel for its last %d bytes\n", hle_ticks_ms() / 1000.0 - g_t0, (int)(c - g_ch), n);
     if (s) {
         s->own = *w, s->wave = &s->own;
         for (int i = 0; i < n; i++) s->ring[i] = c->ring[(c->head + i) % RING];
         s->head = 0, s->tail = n, s->frac = c->frac;
-        s->volume = c->volume, s->freq = c->freq, s->pos = c->pos, s->has_pos = c->has_pos;
+        if (c->kept) s->volume = c->kept_volume, s->freq = c->kept_freq, s->pos = c->kept_pos, s->has_pos = c->kept_has_pos;
+        else s->volume = c->volume, s->freq = c->freq, s->pos = c->pos, s->has_pos = c->has_pos;
         s->eof = 1, s->paused = 0, s->playing = 1, s->pulled = c->pulled, s->played = c->played;
-        s->quiet = c->quiet, s->sounded = 1;
-        T("%.1fs channel %d: its last %.2f s go on in channel %d (volume %.2f, %s)\n", hle_ticks_ms() / 1000.0 - g_t0,
+        s->quiet = c->quiet, s->sounded = 1, s->handed = 0;
+        c->handed = 1;
+        T("%.1fs channel %d: its last %.2f s go on in channel %d (volume %.2f, %s%s)\n", hle_ticks_ms() / 1000.0 - g_t0,
           (int)(c - g_ch), n / (double)(w->rate * w->channels * (w->bits / 8)), (int)(s - g_ch),
-          c->volume, c->has_pos ? "3D" : "2D");
+          s->volume, s->has_pos ? "3D" : "2D",
+          !c->kept ? "" : c->kept_volume != c->volume || c->kept_has_pos != c->has_pos ? ", not the next sound's" : ", as before its set-up");
     }
     pthread_mutex_unlock(&g_mu);
 }
@@ -385,9 +401,26 @@ static void hand_tail(chan_t *c) {
  * is left alone: the game moves and fades sounds it still plays, and a
  * channel stopped under it leaves its sound object half way through. */
 static void before_setup(chan_t *c) {
-    if (!c || !c->wave || !c->eof) return;
-    hand_tail(c);
-    stop_channel(c);
+    if (!c || !c->wave) return;
+    if (c->eof) {
+        hand_tail(c);
+        stop_channel(c);
+        return;
+    }
+    /* Given whole but its stream not ended: the game may be setting the
+     * channel up for its next sound while this one's last half second
+     * still sounds, and the tail would go on at the next sound's volume and
+     * place (an announcer's line ending at a 3D effect's 6% volume: its last
+     * words lost). Its settings are kept as they were before the first such
+     * call, and the tail goes on with them if the next sound is played
+     * here; if not, the game was moving or fading this sound, which the new
+     * settings still do now. */
+    pthread_mutex_lock(&g_mu);
+    if (!c->kept && given_whole(c)) {
+        c->kept = 1, c->kept_volume = c->volume, c->kept_freq = c->freq;
+        c->kept_pos = c->pos, c->kept_has_pos = c->has_pos;
+    }
+    pthread_mutex_unlock(&g_mu);
 }
 static void q_QSWaveMixFreeWave(void) {                  /* (session, wave) */
     wave_t *w = wave_of(A32(1));

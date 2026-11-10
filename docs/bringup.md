@@ -156,7 +156,8 @@ round, and how the mix sounds against the original.
 | `HLE_D3DTRACE=1` | Direct3D's device, viewports and the interfaces asked for |
 | `HLE_D3DFPS=1` | scenes a second and triangles a scene, every five seconds |
 | `HLE_DITRACE=1` | DirectInput's devices, and every buffered read |
-| `TPW_QMTRACE=1` | QMixer: set-up, every wave opened and played |
+| `TPW_QMTRACE=1` | QMixer: set-up, every wave opened and played, tails carried on, and any sound stopped before its end (`CUT`) |
+| `TPW_MODEL_TRACE=1` | widescreen: the free models (advisor, dialog previews) each 30th frame, and the point each is squeezed about |
 | `TPW_QMWAV=FILE` | the mixed audio, recorded to a WAV as it plays |
 | `TPW_SSATRACE=1` | every Uniscribe measurement, with the size it gives |
 | `HLE_MSGTRACE=1` | every window message posted |
