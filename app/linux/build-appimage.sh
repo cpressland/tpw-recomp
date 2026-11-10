@@ -145,7 +145,13 @@ tool() {   # name command...
 }
 tool pkg-config "\"\$t/python/lib/python3.13/site-packages/$pkgconf_bin\""
 tool ninja '"$t/python/bin/ninja"'
-tool cmake '"$t/python/lib/python3.13/site-packages/cmake/data/bin/cmake"'
+# CMake names itself in the build it makes by its real path, which in the
+# AppImage is this run's mount. So it sits apart, in usr/cmake, and AppRun
+# copies it to the game folder once (TPW_CMAKE), named by its version.
+mv "$P/site-packages/cmake/data" "$u/cmake"
+"$u/cmake/bin/cmake" --version | sed -n '1s/^cmake version //p' > "$u/cmake/VERSION"
+[ -s "$u/cmake/VERSION" ] || { echo "no CMake version" >&2; exit 1; }
+tool cmake '"$t/cmake/bin/cmake"'
 
 # zig: the player's C compiler. UBSan off: zig turns it on in unoptimised C.
 tar -xJf "$cache/$ZIG.tar.xz" -C "$u"

@@ -20,6 +20,18 @@ mkdir -p "$home"
 ln -sfn "$here" "$home/appimage"
 t=$home/appimage/usr
 
+# CMake records its own real path in the build (to re-run itself), and here
+# that is inside this run's mount, gone by the next. So the build uses a copy
+# in the game folder, one per CMake version.
+cmake_dir=$home/tools/cmake-$(cat "$here/usr/cmake/VERSION")
+if [ ! -x "$cmake_dir/bin/cmake" ]; then
+  mkdir -p "$home/tools"
+  rm -rf "$cmake_dir.part"
+  cp -R "$here/usr/cmake" "$cmake_dir.part" && mv "$cmake_dir.part" "$cmake_dir"
+  for old in "$home"/tools/cmake-*; do [ "$old" = "$cmake_dir" ] || rm -rf "$old"; done
+fi
+export TPW_CMAKE="$cmake_dir/bin/cmake"
+
 export TPW_HOME="$home"
 export TPW_SHARE="$t/share/theme-park-world"
 export TPW_PYTHON="$t/python/bin/python3"
