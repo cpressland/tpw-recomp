@@ -33,7 +33,14 @@ jobs:
         with:
           fetch-depth: 0          # the version, from the tags
 
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/ai/cache
+          key: appimage-downloads-${{ matrix.arch }}-${{ hashFiles('app/linux/build-appimage.sh', 'app/requirements.txt') }}
+          restore-keys: appimage-downloads-${{ matrix.arch }}-
+
       - name: Build
+        timeout-minutes: 40
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           version=
