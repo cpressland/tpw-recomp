@@ -9,6 +9,11 @@
  *   --rclick x,y@s      the right button
  *   --key vk@s          a key pressed and released (a virtual-key code:
  *                       27 Escape, 13 Return, 0x41 'A', ...)
+ *   --ldown/--lup x,y@s the left button pressed, or released, there (a drag:
+ *   --rdown/--rup x,y@s  --move between them); the right; the middle
+ *   --mdown/--mup x,y@s
+ *   --kdown/--kup vk@s  a key pressed, or released
+ *   --wheel n@s         the wheel turned n notches (away from the user positive)
  *
  * s is seconds from the game's entry. Events run in time order on their own
  * thread, each touch of the window manager made holding the machine
@@ -30,7 +35,7 @@
 #define WM_RBUTTONUP   0x0205u
 
 typedef struct { char kind; int x, y; double t; } ev_t;   /* m move, c click, r right click, k key */
-#define MAX_EV 256
+#define MAX_EV 1024
 static ev_t g_ev[MAX_EV];
 static int g_nev;
 
@@ -43,8 +48,17 @@ int script_arg(int argc, char **argv, int i) {
     else if (!strcmp(argv[i], "--click")) e.kind = 'c';
     else if (!strcmp(argv[i], "--rclick")) e.kind = 'r';
     else if (!strcmp(argv[i], "--key")) e.kind = 'k';
+    else if (!strcmp(argv[i], "--ldown")) e.kind = 'L';
+    else if (!strcmp(argv[i], "--lup")) e.kind = 'l';
+    else if (!strcmp(argv[i], "--rdown")) e.kind = 'R';
+    else if (!strcmp(argv[i], "--rup")) e.kind = 'u';
+    else if (!strcmp(argv[i], "--mdown")) e.kind = 'M';
+    else if (!strcmp(argv[i], "--mup")) e.kind = 'n';
+    else if (!strcmp(argv[i], "--kdown")) e.kind = 'K';
+    else if (!strcmp(argv[i], "--kup")) e.kind = 'j';
+    else if (!strcmp(argv[i], "--wheel")) e.kind = 'w';
     else return 0;
-    if (e.kind == 'k') {
+    if (e.kind == 'k' || e.kind == 'K' || e.kind == 'j' || e.kind == 'w') {
         char *at = strchr(a, '@');
         if (!at) return 0;
         e.x = (int)strtol(a, NULL, 0);
@@ -86,6 +100,29 @@ static void *run(void *arg) {
             fprintf(stderr, "[input] %.1fs %s %d,%d\n", e->t, e->kind == 'c' ? "click" : "rclick", e->x, e->y);
             break;
         }
+        case 'L': case 'l': case 'R': case 'u': case 'M': case 'n': {
+            static const struct { char k; uint32_t m; const char *name; } b[6] = {
+                { 'L', WM_LBUTTONDOWN, "ldown" }, { 'l', WM_LBUTTONUP, "lup" },
+                { 'R', WM_RBUTTONDOWN, "rdown" }, { 'u', WM_RBUTTONUP, "rup" },
+                { 'M', 0x0207u, "mdown" }, { 'n', 0x0208u, "mup" } };   /* WM_MBUTTONDOWN, WM_MBUTTONUP */
+            for (int j = 0; j < 6; j++)
+                if (b[j].k == e->kind) {
+                    mouse(WM_MOUSEMOVE, e->x, e->y);
+                    mouse(b[j].m, e->x, e->y);
+                    fprintf(stderr, "[input] %.1fs %s %d,%d\n", e->t, b[j].name, e->x, e->y);
+                }
+            break;
+        }
+        case 'K': case 'j':
+            key(e->kind == 'K', (uint32_t)e->x);
+            fprintf(stderr, "[input] %.1fs key %d %s\n", e->t, e->x, e->kind == 'K' ? "down" : "up");
+            break;
+        case 'w':
+            mach_enter();
+            hle_input_wheel(e->x * 120);
+            mach_leave();
+            fprintf(stderr, "[input] %.1fs wheel %d\n", e->t, e->x);
+            break;
         case 'k':
             key(1, (uint32_t)e->x);
             sleep_ms(150);

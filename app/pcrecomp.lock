@@ -1,4 +1,4 @@
 # The pcrecomp a release builds with (.github/workflows/release.yml): main
 # with the pending merges (README), as one commit on a fork's branch.
 repository=cpressland/pcrecomp
-ref=75f2c7a38bd3fe7bf11327309f916705f1d59654
+ref=f36833df31b0712de7f87f3db2de90e35b24552e
