@@ -6,9 +6,10 @@
 #
 # What the Flatpak gets from the freedesktop SDK, the AppImage carries: zig
 # (clang, a linker and glibc's headers: the player's compile), a standalone
-# Python with the lift's packages, CMake, Ninja and pkgconf, and SDL2 and
-# SDL2_ttf built here. None of the game: the player's computer downloads the
-# disc image and the patch and builds it, as on a Mac (AppRun).
+# Python with the lift's packages, CMake, Ninja and pkgconf, SDL2 and
+# SDL2_ttf built here, and Vulkan's headers. None of the game: the player's
+# computer downloads the disc image and the patch and builds it, as on a Mac
+# (AppRun).
 #
 # The app is this repository's HEAD, checked-in files only, and pcrecomp at
 # app/pcrecomp.lock's commit ($PCRECOMP: a checkout of it to use instead of
@@ -75,6 +76,8 @@ fetch https://github.com/libsdl-org/SDL/releases/download/release-2.32.10/SDL2-2
   5f5993c530f084535c65a6879e9b26ad441169b3e25d789d83287040a9ca5165
 fetch https://github.com/libsdl-org/SDL_ttf/releases/download/release-2.24.0/SDL2_ttf-2.24.0.tar.gz \
   0b2bf1e7b6568adbdbc9bb924643f79d9dedafe061fa1ed687d1d9ac4e453bfd
+fetch https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/vulkan-sdk-1.4.350.0.tar.gz \
+  70270d10bf2c1e074a06ee37a50b75d332993d1b80a1d9526eeed2da6d82ed22 Vulkan-Headers-1.4.350.0.tar.gz
 
 echo "==> Theme Park World $version ($commit), $arch"
 app=$out/AppDir
@@ -112,6 +115,12 @@ cmake -S "$out/SDL2_ttf-2.24.0" -B "$out/SDL2_ttf-2.24.0/b" -G Ninja -DCMAKE_BUI
 cmake --build "$out/SDL2_ttf-2.24.0/b" >/dev/null
 cmake --install "$out/SDL2_ttf-2.24.0/b" >/dev/null
 rm -rf "$u/lib/cmake" "$u/share" "$u/bin/sdl2-config" "$u"/lib/*.a
+# Vulkan's headers, for the game's Vulkan renderer (pcrecomp's d3d_vulkan.c):
+# beside SDL's, where the game's compile looks; the loader is the player's.
+tar -xzf "$cache/Vulkan-Headers-1.4.350.0.tar.gz" -C "$out"
+cp -R "$out/Vulkan-Headers-vulkan-sdk-1.4.350.0/include/vulkan" "$out/Vulkan-Headers-vulkan-sdk-1.4.350.0/include/vk_video" "$u/include/"
+install -Dm644 "$out/Vulkan-Headers-vulkan-sdk-1.4.350.0/LICENSE.md" "$u/share/licenses/Vulkan-Headers.md"
+rm -rf "$out/Vulkan-Headers-vulkan-sdk-1.4.350.0"
 # pkg-config finds them wherever the AppImage is mounted.
 sed -i 's|^prefix=.*|prefix=${pcfiledir}/../..|' "$u"/lib/pkgconfig/*.pc
 

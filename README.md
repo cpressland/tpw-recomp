@@ -83,8 +83,9 @@ two files, `--install --status` to see what's out of date). Built by
 `app/linux/build-appimage.sh` on Ubuntu 22.04 (`.github/workflows/appimage.yml`).
 
 The game holds the mouse inside its picture while it has focus, as on a
-Mac: Ctrl+Super lets it go and a click takes it back. Linux draws with the
-software renderer for now (Metal is the Mac's).
+Mac: Ctrl+Super lets it go and a click takes it back. Direct3D draws on the
+GPU through Vulkan (1.3, as Mesa's drivers on a Steam Deck and any recent
+desktop have), or in software where there is none.
 
 ## What you need
 
@@ -277,7 +278,9 @@ Linux launcher (SDL, as the game is); `TPW_LAUNCHER_SHOT=FILE.bmp` with
    keeps its 4:3 shape, held to the screen's corners and centre
    (`TPW_STRETCH_HUD=1` stretches it as the game would). Loading screens and
    movies keep 4:3 too, with black at the sides.
-   Direct3D draws on the GPU through Metal (pcrecomp's `d3d_metal.m`);
+   Direct3D draws on the GPU through Metal on a Mac (pcrecomp's
+   `d3d_metal.m`) and Vulkan on Linux (`d3d_vulkan.c`, which needs Vulkan's
+   headers to build and falls back to software without a Vulkan 1.3 GPU);
    `--renderer software` draws on the CPU instead, as before, which is slow
    at large sizes.
 
