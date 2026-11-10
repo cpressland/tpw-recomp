@@ -294,9 +294,11 @@ static SDL_Renderer *R;
 static TTF_Font *F_TITLE, *F_BODY, *F_SMALL, *F_BUTTON;
 
 static TTF_Font *font(int bold, int size) {
-    static const char *dirs[] = { "/usr/share/fonts/dejavu", "/usr/share/fonts/truetype/dejavu",
+    /* TPW_FONTS first: the AppImage carries its own (a system may have none) */
+    static const char *dirs[] = { "", "/usr/share/fonts/dejavu", "/usr/share/fonts/truetype/dejavu",
                                   "/usr/share/fonts/TTF", "/usr/share/fonts/dejavu-sans-fonts", NULL };
-    char p[256];
+    dirs[0] = env_or("TPW_FONTS", "/usr/share/fonts/dejavu");
+    char p[1100];
     for (int i = 0; dirs[i]; i++) {
         snprintf(p, sizeof p, "%s/%s", dirs[i], bold ? "DejaVuSans-Bold.ttf" : "DejaVuSans.ttf");
         TTF_Font *f = TTF_OpenFont(p, size);

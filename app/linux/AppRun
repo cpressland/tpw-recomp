@@ -1,0 +1,39 @@
+#!/bin/sh
+# The AppImage's entry: Theme Park World's launcher (launcher.c) with the
+# build tools the AppImage carries (build-appimage.sh), so the player's
+# computer needs no compiler of its own, as on a Steam Deck.
+#
+# The AppImage mounts somewhere new each run, and the game's build (CMake's
+# cache, the game's rpath to SDL) must not depend on where. So the game folder
+# gets a link, appimage/, to this run's mount, and everything names that.
+#
+#   Theme-Park-World-x86_64.AppImage [game arguments]
+#   Theme-Park-World-x86_64.AppImage --install [install.py arguments]
+#       the build without a window: --status, --download, or --iso/--patch
+#       for your own two files (what the launcher's Download and Build runs)
+#
+# TPW_HOME: the game, its build and logs ($XDG_DATA_HOME/theme-park-world).
+set -e
+here=$(dirname "$(readlink -f "$0")")
+home=${TPW_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/theme-park-world}
+mkdir -p "$home"
+ln -sfn "$here" "$home/appimage"
+t=$home/appimage/usr
+
+export TPW_HOME="$home"
+export TPW_SHARE="$t/share/theme-park-world"
+export TPW_PYTHON="$t/python/bin/python3"
+export TPW_FONTS="$t/share/fonts"
+export PATH="$t/bin:$PATH"
+export CC="$t/bin/cc"
+export PKG_CONFIG_PATH="$t/lib/pkgconfig" PKG_CONFIG_LIBDIR="$t/lib/pkgconfig"
+export LDFLAGS="-Wl,-rpath,$t/lib"      # the game finds the AppImage's SDL
+export ZIG_GLOBAL_CACHE_DIR="$home/build/zig-cache"
+export ZIG_LOCAL_CACHE_DIR="$home/build/zig-cache"
+
+if [ "${1:-}" = --install ]; then
+  shift
+  exec "$TPW_PYTHON" -I "$TPW_SHARE/src/tpw/tools/install/install.py" \
+    --dest "$home" --pcrecomp "$TPW_SHARE/src/pcrecomp" "$@"
+fi
+exec "$t/bin/theme-park-world" "$@"
