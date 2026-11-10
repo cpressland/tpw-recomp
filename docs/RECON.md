@@ -252,7 +252,10 @@ stop the run.
     widget, scaled per axis by code not yet found. Widget-fitted models
     (`sub_00476C50` fits a model's box to a rectangle) and text sit flat
     on depth layers `z = 1 - d/40`; anything else in screen space is
-    grouped by overlapping depth and squeezed at the projection.
+    squeezed at the projection. The advisor draws near the eye
+    (`z` about 0.2), dialog previews further (about 0.55); draws whose x
+    ranges meet are one model, squeezed about one point (where the last
+    frame drew it), and only the advisor goes towards its screen edge.
   - **Hit circles.** A circle has one radius in virtual units, which are
     narrower than tall once squeezed. The builder's circles are noted
     with their widget, and their test (`sub_0066C0C4`) widens the x
