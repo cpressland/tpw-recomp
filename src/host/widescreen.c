@@ -29,6 +29,7 @@
  */
 #include <math.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -134,15 +135,34 @@ uint32_t tpw_rel_w(uint32_t w) {
 
 /* Free models, at the projection: (arr, stride, n) vertices already in
  * screen space when w = 1. Widget-fitted models and text sit flat on the
- * GUI's depth layers (z = 1 - d/40) and are skipped. Consecutive other draws
- * whose depths overlap are one model, numbered in drawing order; each is
- * squeezed about where the previous frame drew it, so its parts move
- * together; in an outer third (a corner piece, like the advisor) towards that
- * edge instead. A draw of the world (w != 1) starts a new frame. */
+ * GUI's depth layers (z = 1 - d/40) and are skipped. The rest are the
+ * advisor, drawn near the eye (z about 0.2) in the bottom-right corner, and
+ * the previews in dialogs (a ride, a shop, a crate; z about 0.55), which the
+ * game projects about the middle of their (squeezed) box.
+ *
+ * Draws whose x ranges meet are one model, so a ride's spinning ornaments
+ * go with its base; each model is squeezed about one point, where the
+ * previous frame drew it (or, new, where its first part is), so its parts
+ * keep together and it stays in its box. The advisor goes towards the edge
+ * of the outer third it is in. (Grouped by depth instead, a preview's parts
+ * split into models squeezed about different points, and one in an outer
+ * third was pulled towards the screen's edge, out of its box.) A draw of
+ * the world (w != 1) starts a new frame. */
 #define MODELS 64
-static int g_model = -1, g_hud_drawn;
-static float g_z0, g_z1, g_lo[MODELS], g_hi[MODELS], g_prev_lo[MODELS], g_prev_hi[MODELS];
-static int g_have_prev[MODELS];
+#define ADVISOR_Z 0.35f      /* nearer than this: the advisor */
+#define MODEL_GAP 0.15f      /* x ranges this close (of the screen's 2) meet */
+typedef struct { float lo, hi, o; int advisor; } model_t;
+static model_t g_m[MODELS], g_prev[MODELS];
+static int g_nm, g_nprev, g_hud_drawn;
+
+static void models_trace(void) {
+    static int tr = -1, fr;
+    if (tr < 0) tr = getenv("TPW_MODEL_TRACE") != NULL;
+    if (!tr || ++fr % 30) return;
+    fprintf(stderr, "[models]");
+    for (int m = 0; m < g_nm; m++) fprintf(stderr, " %s x%.2f..%.2f about %.2f", g_m[m].advisor ? "advisor" : "preview", g_m[m].lo, g_m[m].hi, g_m[m].o);
+    fprintf(stderr, "\n");
+}
 
 void tpw_hud_models(uint32_t arr, uint32_t stride, uint32_t n) {
     if (!n || stride < 16 || stride > 256) return;
@@ -152,11 +172,11 @@ void tpw_hud_models(uint32_t arr, uint32_t stride, uint32_t n) {
         memcpy(v, hle_ptr(arr + i * stride), 16);
         if (v[3] != 1.0f) {
             if (g_hud_drawn) {
-                for (int m = 0; m < MODELS; m++)
-                    g_have_prev[m] = m <= g_model, g_prev_lo[m] = g_lo[m], g_prev_hi[m] = g_hi[m];
+                models_trace();
+                memcpy(g_prev, g_m, sizeof g_m), g_nprev = g_nm;
                 g_hud_drawn = 0;
             }
-            g_model = -1;
+            g_nm = 0;
             return;
         }
         if (v[0] < lo) lo = v[0];
@@ -167,25 +187,33 @@ void tpw_hud_models(uint32_t arr, uint32_t stride, uint32_t n) {
     g_hud_drawn = 1;
     float layer = (1.0f - zl) * 40.0f;
     if (zh - zl < 1e-5f && fabsf(layer - roundf(layer)) < 4e-4f) return;
-    if (g_model < 0 || zh < g_z0 - 0.02f || zl > g_z1 + 0.02f) {
-        if (g_model + 1 >= MODELS) return;
-        g_model++, g_z0 = zl, g_z1 = zh, g_lo[g_model] = lo, g_hi[g_model] = hi;
+    int advisor = zh < ADVISOR_Z;
+    model_t *m = NULL;
+    for (int i = 0; i < g_nm && !m; i++)
+        if (g_m[i].advisor == advisor && lo <= g_m[i].hi + MODEL_GAP && hi >= g_m[i].lo - MODEL_GAP) m = &g_m[i];
+    if (m) {
+        if (lo < m->lo) m->lo = lo;
+        if (hi > m->hi) m->hi = hi;
     } else {
-        if (zl < g_z0) g_z0 = zl;
-        if (zh > g_z1) g_z1 = zh;
-        if (lo < g_lo[g_model]) g_lo[g_model] = lo;
-        if (hi > g_hi[g_model]) g_hi[g_model] = hi;
+        if (g_nm >= MODELS) return;
+        m = &g_m[g_nm++];
+        m->lo = lo, m->hi = hi, m->advisor = advisor;
+        m->o = (lo + hi) * 0.5f;
+        float best = 1e9f;                                   /* the same model last frame: the nearest that met */
+        for (int i = 0; i < g_nprev; i++) {
+            const model_t *p = &g_prev[i];
+            float c = (p->lo + p->hi) * 0.5f, d = fabsf(c - m->o);
+            if (p->advisor == advisor && lo <= p->hi + MODEL_GAP && hi >= p->lo - MODEL_GAP && d < best) best = d, m->o = c;
+        }
+        if (advisor && m->o < -1.0f / 3) m->o = -1.0f;
+        else if (advisor && m->o > 1.0f / 3) m->o = 1.0f;
     }
     float k = squeeze();
     if (k == 1.0f) return;
-    int m = g_model;
-    float o = g_have_prev[m] ? (g_prev_lo[m] + g_prev_hi[m]) * 0.5f : (g_lo[m] + g_hi[m]) * 0.5f;
-    if (o < -1.0f / 3) o = -1.0f;
-    else if (o > 1.0f / 3) o = 1.0f;
     for (uint32_t i = 0; i < n; i++) {
         float x;
         memcpy(&x, hle_ptr(arr + i * stride), 4);
-        x = o + (x - o) * k;
+        x = m->o + (x - m->o) * k;
         memcpy(hle_ptr(arr + i * stride), &x, 4);
     }
 }
