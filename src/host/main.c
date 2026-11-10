@@ -45,9 +45,9 @@ static int g_free_mouse;                 /* --free-mouse: the pointer may leave 
 static unsigned g_watchdog_s;
 static const char *g_resolution;         /* --resolution WxH | options */
 #ifdef __APPLE__
-static const char *g_renderer = "metal";      /* --renderer metal | software */
+static const char *g_renderer = "metal";      /* --renderer metal | vulkan | software */
 #else
-static const char *g_renderer = "software";
+static const char *g_renderer = "vulkan";
 #endif
 static const char *g_shot;               /* --shot FILE: the screen, as a BMP */
 static unsigned g_shot_s = 10;           /* --shot-after S */
@@ -319,7 +319,7 @@ __attribute__((visibility("default"))) int tpw_main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--shot-after") && i + 1 < argc) g_shot_s = (unsigned)strtoul(argv[++i], NULL, 0);
         else if (!strcmp(argv[i], "--shot-every") && i + 1 < argc) g_shot_every = (unsigned)strtoul(argv[++i], NULL, 0);
         else {
-            printf("usage: tpw [--run] [--headless] [--windowed] [--free-mouse] [--resolution WxH|native|options] [--renderer metal|software] [--game DIR] [--mute] [--watchdog S] [--trace] [--shot FILE.bmp] [--shot-after S] [--shot-every S]\n"
+            printf("usage: tpw [--run] [--headless] [--windowed] [--free-mouse] [--resolution WxH|native|options] [--renderer metal|vulkan|software] [--game DIR] [--mute] [--watchdog S] [--trace] [--shot FILE.bmp] [--shot-after S] [--shot-every S]\n"
                    "           [--move x,y@s] [--click x,y@s] [--rclick x,y@s] [--key vk@s]\n");
             return !strcmp(argv[i], "--help") || !strcmp(argv[i], "-h") ? 0 : 1;
         }
@@ -384,16 +384,23 @@ __attribute__((visibility("default"))) int tpw_main(int argc, char **argv) {
      * cursor, and the mouse is held in the picture either way (Ctrl+Cmd lets go). */
     hle_screen_confine(!g_free_mouse);
     if (hle_screen_open(TPW_TITLE, !g_windowed, g_headless) != 0) return 1;
-    /* Direct3D on the GPU (Metal, the default on a Mac), or in software
-     * (pcrecomp's d3d_raster.c), which it falls back to without a Metal device. */
+    /* Direct3D on the GPU (Metal, the default on a Mac; Vulkan, on Linux), or
+     * in software (pcrecomp's d3d_raster.c), which each falls back to without
+     * its GPU. */
     if (!strcmp(g_renderer, "metal")) {
 #ifdef __APPLE__
         hle_d3d_metal_enable();
 #else
         fprintf(stderr, "--renderer metal: macOS only; software rendering\n");
 #endif
+    } else if (!strcmp(g_renderer, "vulkan")) {
+#ifdef __APPLE__
+        fprintf(stderr, "--renderer vulkan: Linux only; software rendering\n");
+#else
+        hle_d3d_vulkan_enable();
+#endif
     } else if (strcmp(g_renderer, "software")) {
-        fprintf(stderr, "--renderer: software or metal\n");
+        fprintf(stderr, "--renderer: metal, vulkan or software\n");
         return 1;
     }
 #ifdef RECOMP_TRACE

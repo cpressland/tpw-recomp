@@ -81,7 +81,7 @@ endif()
 set(GEN_OPT "-O2" CACHE STRING "optimisation for the generated C")
 set_source_files_properties(${GEN_SOURCES} PROPERTIES COMPILE_OPTIONS "-w;${GEN_OPT};-fno-strict-aliasing;-fwrapv")
 target_compile_options(tpw_obj PRIVATE -fno-strict-aliasing -fwrapv)
-target_link_libraries(tpw_obj PUBLIC tpw_sdl pthread m)
+target_link_libraries(tpw_obj PUBLIC tpw_sdl pthread m ${CMAKE_DL_LIBS})   # dl: the Vulkan loader, opened at run time
 # Direct3D on the GPU: Metal (--renderer metal), without ARC (d3d_metal.m).
 if(APPLE)
   target_sources(tpw_obj PRIVATE ${HLE}/d3d_metal.m)
