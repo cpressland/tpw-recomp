@@ -164,12 +164,16 @@ def build_jobs():
 
 
 def find_tools():
-    """CMake and Ninja: this Python's own packages first (the app's), then the PATH."""
-    try:
-        import cmake
-        cm = os.path.join(cmake.CMAKE_BIN_DIR, 'cmake')
-    except ImportError:
-        cm = shutil.which('cmake')
+    """CMake and Ninja: $TPW_CMAKE (the AppImage's, copied to where it stays
+    put: CMake names itself in the build by its real path), this Python's own
+    packages (the app's), then the PATH."""
+    cm = os.environ.get('TPW_CMAKE')
+    if not (cm and os.access(cm, os.X_OK)):
+        try:
+            import cmake
+            cm = os.path.join(cmake.CMAKE_BIN_DIR, 'cmake')
+        except ImportError:
+            cm = shutil.which('cmake')
     nj = os.path.join(os.path.dirname(sys.executable), 'ninja')
     if not os.access(nj, os.X_OK):
         nj = shutil.which('ninja')
