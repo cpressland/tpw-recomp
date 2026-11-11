@@ -28,7 +28,11 @@ while [ $# -gt 1 ]; do
   case $1 in
     --version) version=$2; shift 2 ;;
     --apt) echo "==> apt-get install"
-           apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends $APT >/dev/null
+           for try in 1 2 3 4 5; do        # the mirrors, or the runner's DNS, now and then fail
+             apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends $APT >/dev/null && break
+             [ "$try" = 5 ] && exit 1
+             sleep 15
+           done
            shift ;;
     *) break ;;
   esac
