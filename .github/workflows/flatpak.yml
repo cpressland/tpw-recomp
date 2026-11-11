@@ -42,7 +42,10 @@ jobs:
         timeout-minutes: 15       # a stalled mirror hung v1.5.2's and v1.5.3's here
         run: |
           # each try gives up on a stalled mirror rather than waiting forever
-          echo "::group::who holds apt"; ps -eo pid,etime,args | grep -E "apt|dpkg|unattended" | grep -v grep || true; echo "::endgroup::"
+          # The runners' resolver has failed for Ubuntu's mirrors (v1.5.2,
+          # v1.5.3: apt hung there): public resolvers instead.
+          sudo rm -f /etc/resolv.conf
+          printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' | sudo tee /etc/resolv.conf >/dev/null
           apt="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=120"
           for try in 1 2 3 4 5; do
             timeout 300 sudo apt-get $apt update && timeout 600 sudo apt-get $apt install -y flatpak flatpak-builder && break
