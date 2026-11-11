@@ -13,8 +13,9 @@ sound effects, drawn through DirectX 6's Direct3D at up to 2048x1536 and
 played with the mouse and keyboard. See [docs/bringup.md](docs/bringup.md)
 and [docs/RECON.md](docs/RECON.md).
 
-It needs pcrecomp's `main` (DirectX 6) plus four win32hle changes that are
-still awaiting review upstream; see [pcrecomp: pending merges](#pcrecomp-pending-merges).
+It needs pcrecomp's `main` plus win32hle changes still awaiting review
+upstream (Metal, Vulkan, and input a controller needs); see
+[pcrecomp: pending merges](#pcrecomp-pending-merges).
 
 ## Playing on a Mac
 
@@ -133,36 +134,36 @@ is needed. The 2000-era no-CD `tp.exe`
 
 Some of what this game needs from win32hle is in open pull requests on
 [sp00nznet/pcrecomp](https://github.com/sp00nznet/pcrecomp). Until they are
-merged, pcrecomp's `main` alone won't build this host, and without them the
-game wouldn't get past a park's loading screen or respond to the mouse.
+merged, pcrecomp's `main` alone won't build this host.
 
 | PR | Branch | What it adds | Needed? |
 |----|--------|--------------|---------|
-| [#159](https://github.com/sp00nznet/pcrecomp/pull/159) | `win32hle-dinput` | DirectInput 3/5: the system mouse and keyboard | **Yes.** Without it the game's cursor never moves, so no menu can be used. |
-| [#160](https://github.com/sp00nznet/pcrecomp/pull/160) | `win32hle-gdi-lfwidth` | A font's `lfWidth` squeezes or stretches its text | **Yes.** Without it the ride-sign fitting loop never ends and a park never loads. |
-| [#161](https://github.com/sp00nznet/pcrecomp/pull/161) | `win32hle-mouse-confine` | The mouse held inside the picture while the window has focus (Ctrl+Cmd lets go) | **Yes.** The host calls its `hle_screen_confine`; without it the build fails, and the pointer escapes the window. |
-| [#163](https://github.com/sp00nznet/pcrecomp/pull/163) | `win32hle-metal` | Direct3D on the GPU through Metal | **Yes.** The host builds `d3d_metal.m` and calls `hle_d3d_metal_enable`; without it the build fails. |
-| [#164](https://github.com/sp00nznet/pcrecomp/pull/164) | `win32hle-dsound-cursor` | DirectSound's play cursor moves smoothly between mixes | No, but recommended. Without it the intro movies lose a third of a second of sound, now and then. |
-| [#158](https://github.com/sp00nznet/pcrecomp/pull/158) | `win32hle-dx6-followups` | DirectDraw 4 review follow-ups (resized textures, attached z-buffers, uniqueness values) | No. Correctness fixes from #154's review; TPW runs without them. |
+| [#163](https://github.com/sp00nznet/pcrecomp/pull/163) | `win32hle-metal` | Direct3D on the GPU through Metal (macOS), and the `d3d_gpu.h` seam | **Yes.** The host calls `hle_d3d_metal_enable`. |
+| [#187](https://github.com/sp00nznet/pcrecomp/pull/187) | `win32hle-vulkan` | Direct3D on the GPU through Vulkan (Linux); builds on #163 | **Yes.** The host calls `hle_d3d_vulkan_enable` (a stub where Vulkan's headers are missing). |
+| [#184](https://github.com/sp00nznet/pcrecomp/pull/184) | `win32hle-dinput-relative` | An exclusive DirectInput mouse gets movement, not the pointer | **Yes.** Without it the game's cursor sticks where the pointer met an edge; the controller moves it with `hle_input_motion`. |
+| [#185](https://github.com/sp00nznet/pcrecomp/pull/185) | `win32hle-mouse-wheel` | The mouse wheel, as `WM_MOUSEWHEEL` and DirectInput's z axis; builds on #184 | **Yes.** The wheel and the triggers zoom with it (`hle_input_wheel`). |
+| [#186](https://github.com/sp00nznet/pcrecomp/pull/186) | `win32hle-poll-hook` | A poll hook at each pump, for a host's controller; builds on #184 | **Yes.** `src/host/pad.c` reads the controller there. |
+| [#180](https://github.com/sp00nznet/pcrecomp/pull/180) | `win32hle-present-pacing` | Every flip shown, paced to the display; `Sleep(0)` polling sleeps | No, but recommended: without it frames judder, and the pointer thread takes a core. |
+| [#183](https://github.com/sp00nznet/pcrecomp/pull/183) | `win32hle-handover` | A quieter hand-over between threads, on a condition variable | No: 5% of the main thread back. |
+| [#181](https://github.com/sp00nznet/pcrecomp/pull/181) | `win32hle-dinput-followups` | #159's review follow-ups, and `dinput_selftest.c` | No: correctness for other games. |
+| [#182](https://github.com/sp00nznet/pcrecomp/pull/182) | `win32hle-createfont-width` | `CreateFontA`'s width, as `lfWidth` (#160's follow-up) | No: the game uses `CreateFontIndirectA`. |
 
-To build against them, merge the needed branches into a local branch of
-your pcrecomp clone. They merge cleanly into `main`. `win32hle-metal` and
-`win32hle-dinput` each add a row at the same place in
-`runtime/win32hle/README.md`, so merge `win32hle-metal` on its own and keep
-both rows there:
+DirectX 6 (#154), DirectInput (#159), font widths (#160), the held mouse
+(#161), DirectSound's play cursor (#164) and #154's follow-ups (#158) are in
+`main` now.
+
+The fork's `tpw` branch is upstream `main` with all of these, and the
+commit `app/pcrecomp.lock` names is on it. To build against it:
 
 ```
 cd ../pcrecomp
 git remote add cpressland https://github.com/cpressland/pcrecomp
-git fetch origin && git fetch cpressland
-git switch -c tpw-local origin/main
-git merge --no-edit cpressland/win32hle-dinput cpressland/win32hle-gdi-lfwidth cpressland/win32hle-mouse-confine cpressland/win32hle-dsound-cursor
-git merge --no-edit cpressland/win32hle-metal    # keep both README rows, then:
-git add runtime/win32hle/README.md && git commit --no-edit
+git fetch cpressland
+git switch -c tpw cpressland/tpw
 ```
 
-When a PR is merged, drop its branch from that list (and from this table);
-once all are, build against plain `main`.
+When a PR is merged, it drops off this table and out of `tpw`; once all
+are, build against plain `main`.
 
 ## Building (macOS)
 
@@ -176,7 +177,7 @@ some-folder/
   tpw-recomp/    <- this repository
 ```
 
-with the pending branches merged in, as above.
+on the fork's `tpw` branch, as above.
 
 ### In one command
 
@@ -238,8 +239,8 @@ Pushing a tag `v1.2.3` runs `.github/workflows/release.yml`, which runs
 The app is signed ad hoc, not notarized. Sparkle checks each update with its
 own Ed25519 signature: the workflow signs with the `SPARKLE_PRIVATE_KEY`
 secret, and the app holds the public half, `app/sparkle-public-key.txt`.
-pcrecomp is the commit `app/pcrecomp.lock` names: `main` with the pending
-merges.
+pcrecomp is the commit `app/pcrecomp.lock` names: upstream `main` with the
+pending PRs, on the fork's `tpw` branch.
 
 The same tag runs `.github/workflows/flatpak.yml`: `app/linux/build-flatpak.sh`
 builds the Flatpak on x86-64 and arm64 runners (from the tagged commit's
