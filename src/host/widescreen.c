@@ -185,6 +185,9 @@ void tpw_hud_models(uint32_t arr, uint32_t stride, uint32_t n) {
         if (v[2] > zh) zh = v[2];
     }
     g_hud_drawn = 1;
+    /* Across the whole screen: an effect over all of it (Halloween's
+     * lightning, an inverting quad), not a model; it stays the screen's. */
+    if (lo <= -0.98f && hi >= 0.98f) return;
     float layer = (1.0f - zl) * 40.0f;
     if (zh - zl < 1e-5f && fabsf(layer - roundf(layer)) < 4e-4f) return;
     int advisor = zh < ADVISOR_Z;
