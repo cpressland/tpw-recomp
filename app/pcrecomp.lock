@@ -2,4 +2,4 @@
 # Linux builds): upstream main with the pending PRs (README), a commit on the
 # fork's tpw branch.
 repository=cpressland/pcrecomp
-ref=1075d878bbc4222f26aeccd3782274323c19ee0e
+ref=3fc41e5b1043b064dbe674ceb52735673871194c

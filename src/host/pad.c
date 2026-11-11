@@ -10,18 +10,24 @@
  *   A               the left button (held: a drag - paths, sliders)
  *   B               the right button (cancel, back)
  *   X (held)        Ctrl: click on to build more of the same
+ *   Y               Delete: the clear-land tool (click on what to remove)
+ *   Back            Home: back to the park gates, facing the way it opens
  *   right stick     scroll the park (the cursor pushed to that edge, then
  *                   put back)
- *   LB / RB         rotate the park (a middle-button drag, the cursor put
- *                   back)
+ *   LB / RB         turn the park (the left and right arrow keys, the
+ *                   game's own steady turn)
+ *   right stick in  the park turned back to the way it faces when it opens,
+ *                   where it is
  *   LT / RT         zoom out / in (the wheel, faster pressed harder)
  *   d-pad < >       rotate the item being placed (the , and . keys)
  *   d-pad ^ v       zoom in / out a notch
  *   Start           Escape: the pause menu, or out of a dialog
  *   left stick in   the cursor slow, for small things, while held
  *
- * The game's camera, found by trying it: the cursor at an edge scrolls, a
- * middle-button drag rotates, the wheel zooms.
+ * The game's camera, found by trying it: the cursor at an edge scrolls, the
+ * wheel zooms, the arrow keys turn it, Home goes to the gates. Straightening
+ * it where it is has no key: R3 sets its angle (CAMERA_YAW), which the game
+ * keeps in radians, 0 as a park opens, and builds the view from each frame.
  *
  * TPW_VPAD=FILE: a virtual controller (SDL's), driven by FILE, for tests
  * without one: lines "seconds control value", seconds from the game's
@@ -39,13 +45,13 @@
 #define WM_LBUTTONUP   0x0202u
 #define WM_RBUTTONDOWN 0x0204u
 #define WM_RBUTTONUP   0x0205u
-#define WM_MBUTTONDOWN 0x0207u
-#define WM_MBUTTONUP   0x0208u
 
 #define DEAD 0.18                  /* a stick's dead zone, of full tilt */
 #define CURSOR_SPEED 1.1           /* screen heights a second, at full tilt */
-#define ROTATE_SPEED 0.45          /* screen heights a second of middle-drag */
-#define ROTATE_SPAN 200            /* pixels of drag before the button is taken up again */
+/* The camera's angle about the vertical, in radians, and a copy beside it (in
+ * TP.EXE's data: the host is for this executable alone, main.c checks it). */
+#define CAMERA_YAW      0x007909E0u
+#define CAMERA_YAW_COPY 0x00790A38u
 #define ZOOM_RATE 10.0             /* wheel notches a second, a trigger fully in */
 
 static SDL_GameController *g_pad;
@@ -57,9 +63,7 @@ static uint8_t g_held[SDL_CONTROLLER_BUTTON_MAX];
 
 /* Scrolling: the cursor pushed toward an edge, by (pan_x, pan_y) so far. */
 static int g_panning, g_pan_x, g_pan_y;
-/* Rotating: the middle button down, the cursor dragged by rot_x so far. */
-static int g_rotating, g_rot_x;
-static double g_rot_f, g_zoom_f;
+static double g_zoom_f;
 
 static void screen_size(int *w, int *h) {
     int bpp;
@@ -112,26 +116,10 @@ static void pan(double sx, double sy) {
     g_pan_x += mx, g_pan_y += my, g_panning = 1;
 }
 
-/* ---- rotating: a shoulder drags with the middle button ---- */
-static void rotate(int dir, double dt) {
-    if (!dir) {
-        if (g_rotating) button(WM_MBUTTONUP), move(-g_rot_x, 0, NULL, NULL), g_rotating = 0, g_rot_x = 0;
-        return;
-    }
-    int w, h;
-    screen_size(&w, &h);
-    if (!g_rotating) button(WM_MBUTTONDOWN), g_rotating = 1, g_rot_x = 0, g_rot_f = 0;
-    g_rot_f += dir * ROTATE_SPEED * h * dt;
-    int dx = (int)g_rot_f, mx;
-    g_rot_f -= dx;
-    move(dx, 0, &mx, NULL);
-    g_rot_x += mx;
-    if (abs(g_rot_x) >= ROTATE_SPAN || (dx && !mx)) {  /* far enough (or at an edge): take the button up, go back, down again */
-        button(WM_MBUTTONUP);
-        move(-g_rot_x, 0, NULL, NULL);
-        g_rot_x = 0;
-        button(WM_MBUTTONDOWN);
-    }
+/* ---- turning: the camera's angle, set directly ---- */
+static void set_yaw(float v) {
+    memcpy(hle_ptr(CAMERA_YAW), &v, 4);
+    memcpy(hle_ptr(CAMERA_YAW_COPY), &v, 4);
 }
 
 /* ---- the buttons ---- */
@@ -149,6 +137,16 @@ static void buttons(void) {
     if (ch) button(d ? WM_RBUTTONDOWN : WM_RBUTTONUP);
     d = pressed(SDL_CONTROLLER_BUTTON_X, &ch);
     if (ch) key(d, 0x11, 0x1D);                         /* VK_CONTROL */
+    d = pressed(SDL_CONTROLLER_BUTTON_Y, &ch);
+    if (ch) key(d, 0x2E, 0x53);                         /* VK_DELETE */
+    d = pressed(SDL_CONTROLLER_BUTTON_BACK, &ch);
+    if (ch) key(d, 0x24, 0x47);                         /* VK_HOME: the park gates */
+    d = pressed(SDL_CONTROLLER_BUTTON_LEFTSHOULDER, &ch);
+    if (ch) key(d, 0x25, 0x4B);                         /* VK_LEFT: turn */
+    d = pressed(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER, &ch);
+    if (ch) key(d, 0x27, 0x4D);                         /* VK_RIGHT: turn the other way */
+    d = pressed(SDL_CONTROLLER_BUTTON_RIGHTSTICK, &ch);
+    if (ch && d) set_yaw(0);                            /* the way the park faces when it opens */
     d = pressed(SDL_CONTROLLER_BUTTON_START, &ch);
     if (ch) key(d, 0x1B, 0x01);                         /* VK_ESCAPE */
     d = pressed(SDL_CONTROLLER_BUTTON_DPAD_LEFT, &ch);
@@ -160,19 +158,20 @@ static void buttons(void) {
     d = pressed(SDL_CONTROLLER_BUTTON_DPAD_DOWN, &ch);
     if (ch && d) hle_input_wheel(-120);
     pressed(SDL_CONTROLLER_BUTTON_LEFTSTICK, &ch);
-    pressed(SDL_CONTROLLER_BUTTON_LEFTSHOULDER, &ch);
-    pressed(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER, &ch);
 }
 /* Let go of everything held, as a pad goes. */
 static void release_all(void) {
     if (g_held[SDL_CONTROLLER_BUTTON_A]) button(WM_LBUTTONUP);
     if (g_held[SDL_CONTROLLER_BUTTON_B]) button(WM_RBUTTONUP);
     if (g_held[SDL_CONTROLLER_BUTTON_X]) key(0, 0x11, 0x1D);
+    if (g_held[SDL_CONTROLLER_BUTTON_Y]) key(0, 0x2E, 0x53);
+    if (g_held[SDL_CONTROLLER_BUTTON_BACK]) key(0, 0x24, 0x47);
+    if (g_held[SDL_CONTROLLER_BUTTON_LEFTSHOULDER]) key(0, 0x25, 0x4B);
+    if (g_held[SDL_CONTROLLER_BUTTON_RIGHTSHOULDER]) key(0, 0x27, 0x4D);
     if (g_held[SDL_CONTROLLER_BUTTON_START]) key(0, 0x1B, 0x01);
     if (g_held[SDL_CONTROLLER_BUTTON_DPAD_LEFT]) key(0, 0xBC, 0x33);
     if (g_held[SDL_CONTROLLER_BUTTON_DPAD_RIGHT]) key(0, 0xBE, 0x34);
     pan(0, 0);
-    rotate(0, 0);
     memset(g_held, 0, sizeof g_held);
 }
 
@@ -246,10 +245,8 @@ static void poll(void) {
     buttons();
     double rx, ry;
     stick(SDL_CONTROLLER_AXIS_RIGHTX, SDL_CONTROLLER_AXIS_RIGHTY, &rx, &ry);
-    int lb = g_held[SDL_CONTROLLER_BUTTON_LEFTSHOULDER], rb = g_held[SDL_CONTROLLER_BUTTON_RIGHTSHOULDER];
-    if (!g_rotating) pan(rx, ry);
-    if (!g_panning) rotate(lb && !rb ? -1 : rb && !lb ? 1 : 0, dt);
-    if (!g_panning && !g_rotating) {                    /* the cursor, when the camera is not using it */
+    pan(rx, ry);
+    if (!g_panning) {                                   /* the cursor, when the camera is not using it */
         double lx, ly;
         stick(SDL_CONTROLLER_AXIS_LEFTX, SDL_CONTROLLER_AXIS_LEFTY, &lx, &ly);
         int w, h;
