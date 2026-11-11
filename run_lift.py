@@ -72,6 +72,14 @@ PATCHES = {
     # draws the picture at 4:3 with black sides, and the game only unlocks.
     0x00587191: '{ extern int tpw_splash(uint32_t, uint32_t); '
                 'if (tpw_splash(esi, esp + 0x20)) goto L_005872BA; }',
+    # Halloween's lightning: a frame of the whole screen's negative, a white
+    # quad over it with blend byte 0xA1 (source << 4 | dest: INVDESTCOLOR,
+    # ZERO), which only it uses. Far too bright on a large modern screen: the
+    # blend setter (sub_005679B0, its argument in esi here) makes it 0x12
+    # (ZERO, ONE), which leaves the screen as it is, unless
+    # TPW_LIGHTNING_FLASH=1 (src/host/shims.c).
+    0x005679B4: '{ extern int tpw_lightning_flash(void); '
+                'if ((esi & 0xFFu) == 0xA1u && !tpw_lightning_flash()) esi = (esi & ~0xFFu) | 0x12u; }',
     # Movies: their width, and their x when one is given, at 4:3.
     0x0051B0F7: '{ extern uint32_t tpw_movie_w(void); MEM32(0x802460) = tpw_movie_w(); }',
     0x0051B150: '{ extern uint32_t tpw_movie_x(uint32_t); MEM32(0x802458) = tpw_movie_x(ecx); }',

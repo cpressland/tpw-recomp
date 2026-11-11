@@ -301,7 +301,9 @@ Linux launcher (SDL, as the game is); `TPW_LAUNCHER_SHOT=FILE.bmp` with
    patch). Widescreen shows more of the park left and right, and the HUD
    keeps its 4:3 shape, held to the screen's corners and centre
    (`TPW_STRETCH_HUD=1` stretches it as the game would). Loading screens and
-   movies keep 4:3 too, with black at the sides.
+   movies keep 4:3 too, with black at the sides. Halloween's lightning no
+   longer flashes the whole screen to its negative, which on a large bright
+   screen is enough to make you flinch (`TPW_LIGHTNING_FLASH=1` brings it back).
    Direct3D draws on the GPU through Metal on a Mac (pcrecomp's
    `d3d_metal.m`) and Vulkan on Linux (`d3d_vulkan.c`, which needs Vulkan's
    headers to build and falls back to software without a Vulkan 1.3 GPU);
