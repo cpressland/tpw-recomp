@@ -363,3 +363,12 @@ const win32hle_shim tpw_shims[] = {
     { "ScriptStringGetLogicalWidths", s_ScriptStringGetLogicalWidths },
     { 0, 0 }
 };
+
+/* Halloween's lightning flash (run_lift.py): a frame of the whole screen's
+ * negative, on a 12-inch CRT a flicker, on a large bright screen enough to
+ * make a player flinch. Off, unless TPW_LIGHTNING_FLASH=1. */
+int tpw_lightning_flash(void) {
+    static int on = -1;
+    if (on < 0) { const char *e = getenv("TPW_LIGHTNING_FLASH"); on = e && *e == '1'; }
+    return on;
+}
