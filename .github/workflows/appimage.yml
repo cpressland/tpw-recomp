@@ -17,6 +17,7 @@ permissions:
 jobs:
   build:
     strategy:
+      fail-fast: false         # one architecture's failure does not cancel the other
       matrix:
         include:
           - runner: ubuntu-24.04
@@ -24,10 +25,19 @@ jobs:
           - runner: ubuntu-24.04-arm
             arch: aarch64
     runs-on: ${{ matrix.runner }}
-    container: ubuntu:22.04
+    container:
+      image: ubuntu:22.04
+      # The x86-64 runners' container DNS has failed to resolve Ubuntu's
+      # mirrors (v1.5.2): public resolvers, and the apt steps tried again.
+      options: --dns 1.1.1.1 --dns 8.8.8.8
     steps:
       - name: git, for the checkout's history
-        run: apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates
+        run: |
+          for try in 1 2 3 4 5; do
+            apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates && exit 0
+            sleep 15
+          done
+          exit 1
 
       - uses: actions/checkout@v5
         with:
