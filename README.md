@@ -99,8 +99,10 @@ SDL knows) plays the game as a mouse and keys would, on a Mac or Linux:
 | A | click; held, a drag (paths, sliders) |
 | B | right-click: cancel, back |
 | X, held | click on to build more of the same (Ctrl) |
-| Right stick | scroll the park |
-| LB / RB | rotate the park |
+| Y | the clear-land tool, to remove paths and more (Delete) |
+| Right stick | scroll the park; pressed in: straighten the view where you are |
+| LB / RB | turn the park, at the game's own steady speed (the arrow keys) |
+| Back | back to the park gates (Home) |
 | LT / RT | zoom out / in |
 | D-pad left / right | rotate the item being placed |
 | D-pad up / down | zoom a step |
