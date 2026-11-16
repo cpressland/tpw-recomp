@@ -1,0 +1,98 @@
+{
+  "$schema": "https://recomplauncher.com/schema/recomplauncher.json",
+  "format": 1,
+  "name": "Theme Park World",
+  "repo": "cpressland/tpw-recomp",
+  "min": "0.90.0-beta.24",
+  "game": {
+    "kind": "iso",
+    "label": "Your Theme Park World disc image, TPWORLD.ISO (the README says which one).",
+    "check": { "iso9660": "TP.ICD" },
+    "dumps": [
+      { "name": "TPWORLD.ISO (Internet Archive)", "size": 656865280, "crc32": "db37dcbe" }
+    ]
+  },
+  "inputs": [
+    {
+      "id": "patch",
+      "label": "The official 2.0 patch, themeparkworld20patch.zip (from ModDB).",
+      "role": "update",
+      "formats": [{ "type": "file", "extensions": ["zip"] }]
+    }
+  ],
+  "prepare": {
+    "program": ["Theme-Park-World-x86_64.AppImage"],
+    "args": ["--install", "--progress-lines", "--iso", "{game}", "--patch", "{input:patch}"],
+    "label": "Building the game from your disc and the 2.0 patch (10 to 20 minutes)",
+    "timeout": 3600
+  },
+  "start": {
+    "program": ["Theme-Park-World-x86_64.AppImage"],
+    "env": { "TPW_PLAY_NOW": "1" }
+  },
+  "settings": [
+    {
+      "id": "window",
+      "label": "Window",
+      "help": "F11 or Alt+Enter switches while you play.",
+      "in": "args",
+      "choices": [
+        { "label": "Full screen", "args": [] },
+        { "label": "Window", "args": ["--windowed"] }
+      ]
+    },
+    {
+      "id": "resolution",
+      "label": "Resolution",
+      "help": "Widescreen shows more of the park; the HUD keeps its 4:3 shape.",
+      "in": "args",
+      "choices": [
+        { "label": "Game's choice", "args": [] },
+        { "label": "Your screen's", "args": ["--resolution", "native"] },
+        { "label": "1024x768", "args": ["--resolution", "1024x768"] },
+        { "label": "1920x1080", "args": ["--resolution", "1920x1080"] },
+        { "label": "2560x1440", "args": ["--resolution", "2560x1440"] },
+        { "label": "In the game's Options", "args": ["--resolution", "options"] }
+      ]
+    },
+    {
+      "id": "renderer",
+      "label": "Drawing",
+      "help": "Software draws on the CPU, slowly at large sizes. Try it if the picture is wrong.",
+      "in": "args",
+      "choices": [
+        { "label": "Graphics card (Vulkan)", "args": [] },
+        { "label": "Software", "args": ["--renderer", "software"] }
+      ]
+    },
+    {
+      "id": "pad",
+      "label": "Controller",
+      "help": "Off leaves controllers alone, for Steam Input's own mouse.",
+      "in": "args",
+      "choices": [
+        { "label": "On", "args": [] },
+        { "label": "Off", "args": ["--no-pad"] }
+      ]
+    },
+    {
+      "id": "mouse",
+      "label": "Mouse",
+      "help": "Held in the picture while the game has focus; Ctrl+Super lets it go.",
+      "in": "args",
+      "choices": [
+        { "label": "Held in the game", "args": [] },
+        { "label": "Free", "args": ["--free-mouse"] }
+      ]
+    }
+  ],
+  "saves": ["{local}/theme-park-world/game/save"],
+  "folders": {
+    "saves": [{ "path": "{local}/theme-park-world/game/save" }],
+    "logs": [{ "path": "{local}/theme-park-world/logs" }]
+  },
+  "actions": [
+    { "id": "open-saves", "label": "Open saves", "open": "saves" },
+    { "id": "open-logs", "label": "Open logs", "open": "logs" }
+  ]
+}

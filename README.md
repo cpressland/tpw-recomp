@@ -1,5 +1,7 @@
 # Theme Park World — Static Recompilation
 
+<a href="https://recomplauncher.com/game/tpw-recomp"><picture><source media="(prefers-color-scheme: dark)" srcset="https://recomplauncher.com/assets/press/launcher/badge-light.svg"><img alt="Get it on RecompLauncher" src="https://recomplauncher.com/assets/press/launcher/badge-dark.svg" height="48"></picture></a>
+
 A static recompilation of Bullfrog's **Theme Park World** (1999), version
 2.0, from its shipping Win32 binary to native C, targeting **macOS** first
 and Linux after. Built on the [pcrecomp](https://github.com/sp00nznet/pcrecomp)
@@ -82,6 +84,20 @@ tools and SDL through it. `--install` runs the build without a window
 (`--install --iso TPWORLD.ISO --patch themeparkworld20patch.zip` for your own
 two files, `--install --status` to see what's out of date). Built by
 `app/linux/build-appimage.sh` on Ubuntu 22.04 (`.github/workflows/appimage.yml`).
+
+### Or from RecompLauncher
+
+[RecompLauncher](https://recomplauncher.com/game/tpw-recomp) installs the
+AppImage and keeps it up to date. Its setup screen asks for your own two
+files (the same disc image and patch as above), builds the game with them
+and shows the build's progress, then Play starts the game directly. That
+comes from `recomplauncher.json`, which the AppImage carries at its top: the
+build is `--install --progress-lines --iso … --patch …` (`--progress-lines`
+adds the `progress 0.4 Title` lines the launcher reads), and Play sets
+`TPW_PLAY_NOW`, which presses Play once the game is built, as on a Mac. Its
+settings (full screen, resolution, the renderer, the controller and the
+mouse) are the game's own options below. Without them, the AppImage is
+exactly as it was.
 
 The game holds the mouse inside its picture while it has focus, as on a
 Mac: Ctrl+Super lets it go and a click takes it back. Direct3D draws on the

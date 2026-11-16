@@ -184,8 +184,10 @@ install -m644 /usr/share/doc/fonts-dejavu-core/copyright "$u/share/fonts/DejaVu-
 "$u/python/bin/python3" -I "$out/src/tpw/tools/install/install.py" \
   --export-sources "$u/share/theme-park-world/src" --pcrecomp "$out/src/pcrecomp"
 
-# The AppImage's own files: AppRun, the desktop entry and the icon.
+# The AppImage's own files: AppRun, the desktop entry and the icon, and
+# recomplauncher.json at the top, where RecompLauncher reads it.
 install -m755 "$here/AppRun" "$app/AppRun"
+install -m644 "$repo/recomplauncher.json" "$app/recomplauncher.json"
 install -m644 "$here/io.cpressland.ThemeParkWorld.desktop" "$app/"
 install -m644 "$here/icon-512.png" "$app/io.cpressland.ThemeParkWorld.png"
 ln -sf io.cpressland.ThemeParkWorld.png "$app/.DirIcon"
