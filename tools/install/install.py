@@ -65,7 +65,8 @@ else:
                                 'theme-park-world')
     LIBRARY = 'libtpw.so'
 # What a player's run writes into the game folder, carried over a new one.
-KEEP = ('save', os.path.join('Data', 'Resolution.sam'))   # as the disc spells them: Linux minds the case
+KEEP = ('save', os.path.join('Data', 'Resolution.sam'),   # as the disc spells them: Linux minds the case
+        'settings.ini')                                     # src/host/settings.c
 SPACE_NEEDED = 3 << 30       # the disc twice over, the lift and the build, at their peak
 
 # --download: the two files, from where this project keeps copies of them

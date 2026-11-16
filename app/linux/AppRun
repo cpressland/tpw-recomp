@@ -13,8 +13,14 @@
 #       for your own two files (what the launcher's Download and Build runs)
 #
 # TPW_HOME: the game, its build and logs ($XDG_DATA_HOME/theme-park-world).
+# A portable.txt beside the AppImage (or beside AppRun, unpacked) keeps them
+# in data/ beside it instead.
 set -e
 here=$(dirname "$(readlink -f "$0")")
+beside=$(dirname "${APPIMAGE:-$here/AppRun}")
+if [ -z "${TPW_HOME:-}" ] && [ -e "$beside/portable.txt" ]; then
+  TPW_HOME=$beside/data
+fi
 home=${TPW_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/theme-park-world}
 mkdir -p "$home"
 ln -sfn "$here" "$home/appimage"
