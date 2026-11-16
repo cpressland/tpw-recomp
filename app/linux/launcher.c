@@ -514,8 +514,14 @@ int main(int argc, char **argv) {
         return 1;
     }
     const char *shot_path = getenv("TPW_LAUNCHER_SHOT");
+    /* TPW_PLAY_NOW: Play pressed once the game is built, as Theme Park
+     * World.app has it. A launcher that set the game up itself (RecompLauncher,
+     * recomplauncher.json) starts it without this window showing; an update
+     * that needs the game rebuilt is built first, here, and then played. */
+    int play_now = getenv("TPW_PLAY_NOW") != NULL;
+    int hidden = shot_path || play_now;
     WIN = SDL_CreateWindow(TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, W, H,
-                           SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI | (shot_path ? SDL_WINDOW_HIDDEN : 0));
+                           SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI | (hidden ? SDL_WINDOW_HIDDEN : 0));
     R = WIN ? SDL_CreateRenderer(WIN, -1, shot_path ? SDL_RENDERER_SOFTWARE : SDL_RENDERER_PRESENTVSYNC) : NULL;
     if (!R && WIN) R = SDL_CreateRenderer(WIN, -1, SDL_RENDERER_SOFTWARE);
     if (!R) { fprintf(stderr, "launcher: %s\n", SDL_GetError()); return 1; }
@@ -530,7 +536,12 @@ int main(int argc, char **argv) {
     check_status();
     FOCUS = 99;                                       /* the main button (clamped to the last) */
 
-    for (int quit = 0; !quit;) {
+    int quit = 0;
+    if (play_now && S.phase == READY) quit = act(A_PLAY, argc, argv);
+    else if (play_now && S.phase == UPDATE) start_build();
+    if (!quit) SDL_ShowWindow(WIN);
+
+    while (!quit) {
         SDL_Event e;
         int had = S.phase == WORKING ? SDL_WaitEventTimeout(&e, 50) : SDL_WaitEventTimeout(&e, 250);
         for (; had && !quit; had = SDL_PollEvent(&e)) {
@@ -578,6 +589,7 @@ int main(int argc, char **argv) {
         enum phase before = S.phase;
         pump_build();
         if (S.phase != before) FOCUS = 99;
+        if (play_now && before == WORKING && S.phase == READY) quit = act(A_PLAY, argc, argv);
         draw();
         SDL_RenderPresent(R);
     }
