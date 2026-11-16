@@ -21,15 +21,26 @@
     }
   ],
   "prepare": {
-    "program": ["Theme-Park-World-x86_64.AppImage"],
+    "program": ["Theme Park World.app/Contents/MacOS/Theme Park World", "Theme-Park-World-x86_64.AppImage"],
     "args": ["--install", "--progress-lines", "--iso", "{game}", "--patch", "{input:patch}"],
     "label": "Building the game from your disc and the 2.0 patch (10 to 20 minutes)",
     "timeout": 3600
   },
   "start": {
-    "program": ["Theme-Park-World-x86_64.AppImage"],
+    "program": ["Theme Park World.app", "Theme-Park-World-x86_64.AppImage"],
     "env": { "TPW_PLAY_NOW": "1" }
   },
+  "config": [
+    {
+      "id": "main",
+      "format": "ini",
+      "file": [
+        { "path": "{install}/data/game/settings.ini", "if": "{install}/portable.txt" },
+        { "path": "{local}/Theme Park World/game/settings.ini", "if": "{local}/Theme Park World" },
+        { "path": "{local}/theme-park-world/game/settings.ini" }
+      ]
+    }
+  ],
   "settings": [
     {
       "id": "window",
@@ -56,12 +67,42 @@
       ]
     },
     {
+      "id": "fps",
+      "label": "Frame rate",
+      "help": "The game was made for 60. Unlimited draws as fast as your computer can, and uses more power.",
+      "choices": [
+        { "label": "60", "set": { "game/max_fps": "60" } },
+        { "label": "Unlimited", "set": { "game/max_fps": "0" } }
+      ],
+      "defaults": { "game/max_fps": "60" }
+    },
+    {
+      "id": "hud",
+      "label": "HUD on widescreen",
+      "help": "Stretched fills the width, as the game itself would.",
+      "choices": [
+        { "label": "4:3", "set": { "game/stretch_hud": "false" } },
+        { "label": "Stretched", "set": { "game/stretch_hud": "true" } }
+      ],
+      "defaults": { "game/stretch_hud": "false" }
+    },
+    {
+      "id": "lightning",
+      "label": "Lightning flash",
+      "help": "Halloween's lightning flashes the whole screen to its negative, as it did on a CRT.",
+      "choices": [
+        { "label": "Off", "set": { "game/lightning_flash": "false" } },
+        { "label": "On", "set": { "game/lightning_flash": "true" } }
+      ],
+      "defaults": { "game/lightning_flash": "false" }
+    },
+    {
       "id": "renderer",
       "label": "Drawing",
       "help": "Software draws on the CPU, slowly at large sizes. Try it if the picture is wrong.",
       "in": "args",
       "choices": [
-        { "label": "Graphics card (Vulkan)", "args": [] },
+        { "label": "Graphics card", "args": [] },
         { "label": "Software", "args": ["--renderer", "software"] }
       ]
     },
@@ -78,7 +119,7 @@
     {
       "id": "mouse",
       "label": "Mouse",
-      "help": "Held in the picture while the game has focus; Ctrl+Super lets it go.",
+      "help": "Held in the picture while the game has focus; Ctrl+Super (Ctrl+Cmd on a Mac) lets it go.",
       "in": "args",
       "choices": [
         { "label": "Held in the game", "args": [] },
@@ -86,10 +127,22 @@
       ]
     }
   ],
-  "saves": ["{local}/theme-park-world/game/save"],
+  "saves": [
+    "{install}/data/game/save",
+    "{local}/Theme Park World/game/save",
+    "{local}/theme-park-world/game/save"
+  ],
   "folders": {
-    "saves": [{ "path": "{local}/theme-park-world/game/save" }],
-    "logs": [{ "path": "{local}/theme-park-world/logs" }]
+    "saves": [
+      { "path": "{install}/data/game/save", "if": "{install}/portable.txt" },
+      { "path": "{local}/Theme Park World/game/save", "if": "{local}/Theme Park World" },
+      { "path": "{local}/theme-park-world/game/save" }
+    ],
+    "logs": [
+      { "path": "{install}/data/logs", "if": "{install}/portable.txt" },
+      { "path": "{home}/Library/Logs/Theme Park World", "if": "{home}/Library/Logs/Theme Park World" },
+      { "path": "{local}/theme-park-world/logs" }
+    ]
   },
   "actions": [
     { "id": "open-saves", "label": "Open saves", "open": "saves" },
