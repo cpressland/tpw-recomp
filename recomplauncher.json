@@ -27,7 +27,7 @@
     "timeout": 3600
   },
   "start": {
-    "program": ["Theme Park World.app", "Theme-Park-World-x86_64.AppImage"],
+    "program": ["Theme Park World.app/Contents/MacOS/Theme Park World", "Theme-Park-World-x86_64.AppImage"],
     "env": { "TPW_PLAY_NOW": "1" }
   },
   "config": [
