@@ -5,12 +5,15 @@
 //
 //   ~/Library/Application Support/Theme Park World/   the game (TPW_HOME: elsewhere)
 //   ~/Library/Logs/Theme Park World/                   tpw.log (the game), install.log (the build)
+//   (a portable.txt beside the app: both in data/ beside it, Paths)
 //
+// --install [install.py's arguments] builds it without a window, as the
+// AppImage's AppRun does (RecompLauncher's setup step, recomplauncher.json).
 // The window shows Play when the game is built, and otherwise builds it,
 // downloading the disc image and the patch (or using the player's own). --setup
 // builds it again even when it is ready; TPW_ISO and TPW_PATCH give the
 // player's own two files and start the build; TPW_BUILD_NOW presses Download
-// and Build, TPW_PLAY_NOW presses Play (for tests).
+// and Build (for tests), TPW_PLAY_NOW presses Play once it is built.
 // Started from a terminal, the game's output stays there and other arguments
 // pass to it.
 import AppKit
@@ -19,6 +22,12 @@ import SwiftUI
 
 if ProcessInfo.processInfo.environment["TPW_PLAY"] != nil {
     exit(Game.play())
+}
+
+// --install [install.py's arguments]: the build without a window (Installer).
+if CommandLine.arguments.dropFirst().first == "--install" {
+    let extra = Array(CommandLine.arguments.dropFirst(2))
+    exit(MainActor.assumeIsolated { Installer.runWithoutWindow(extra) })
 }
 
 @MainActor
@@ -37,10 +46,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ note: Notification) {
         // Releases name their feed and key (app/release.sh); a local build has none.
-        if Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") != nil {
+        // RecompLauncher (RECOMPLAUNCHER set) installs each release over this
+        // app itself, so Sparkle stays off there: two updaters, one app.
+        let byLauncher = ProcessInfo.processInfo.environment["RECOMPLAUNCHER"] != nil
+        if Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") != nil && !byLauncher {
             updater = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
         }
-        clearQuarantine()
+        Installer.clearQuarantine()
         let status = Installer.status()
         let ready = status?.ready ?? Paths.exists(Paths.library)
         // TPW_ISO and TPW_PATCH: the player's own two files, chosen already.
@@ -133,17 +145,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // ---- odds and ends -------------------------------------------------------
-
-    /// A download's quarantine reaches every file in the app; the tools it
-    /// runs to build the game are cleared of it once the app itself was let run.
-    func clearQuarantine() {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
-        p.arguments = ["-dr", "com.apple.quarantine", Paths.resources.appendingPathComponent("toolchain").path]
-        p.standardError = FileHandle.nullDevice
-        try? p.run()
-        p.waitUntilExit()
-    }
 
     func menu() -> NSMenu {
         let main = NSMenu()
