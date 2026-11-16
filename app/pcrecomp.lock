@@ -1,5 +1,5 @@
 # The pcrecomp a release builds with (.github/workflows/release.yml and the
-# Linux builds): upstream main with the pending PRs (README), a commit on the
-# fork's tpw branch.
+# Linux builds): upstream main with the Vulkan PR (#187, README), a commit on
+# the fork's win32hle-vulkan branch; plain main once that is merged.
 repository=cpressland/pcrecomp
-ref=3fc41e5b1043b064dbe674ceb52735673871194c
+ref=33dd98edf97c084ba478ef90a271d46cc0a21620

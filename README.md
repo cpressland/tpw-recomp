@@ -13,8 +13,8 @@ sound effects, drawn through DirectX 6's Direct3D at up to 2048x1536 and
 played with the mouse and keyboard. See [docs/bringup.md](docs/bringup.md)
 and [docs/RECON.md](docs/RECON.md).
 
-It needs pcrecomp's `main` plus win32hle changes still awaiting review
-upstream (Metal, Vulkan, and input a controller needs); see
+It needs pcrecomp's `main` plus one win32hle change still awaiting review
+upstream, the Vulkan renderer; see
 [pcrecomp: pending merges](#pcrecomp-pending-merges).
 
 ## Playing on a Mac
@@ -134,38 +134,25 @@ is needed. The 2000-era no-CD `tp.exe`
 
 ## pcrecomp: pending merges
 
-Some of what this game needs from win32hle is in open pull requests on
-[sp00nznet/pcrecomp](https://github.com/sp00nznet/pcrecomp). Until they are
-merged, pcrecomp's `main` alone won't build this host.
+Everything this game needed from win32hle is in
+[sp00nznet/pcrecomp](https://github.com/sp00nznet/pcrecomp)'s `main` but the
+Vulkan renderer:
 
 | PR | Branch | What it adds | Needed? |
 |----|--------|--------------|---------|
-| [#163](https://github.com/sp00nznet/pcrecomp/pull/163) | `win32hle-metal` | Direct3D on the GPU through Metal (macOS), and the `d3d_gpu.h` seam | **Yes.** The host calls `hle_d3d_metal_enable`. |
-| [#187](https://github.com/sp00nznet/pcrecomp/pull/187) | `win32hle-vulkan` | Direct3D on the GPU through Vulkan (Linux); builds on #163 | **Yes.** The host calls `hle_d3d_vulkan_enable` (a stub where Vulkan's headers are missing). |
-| [#184](https://github.com/sp00nznet/pcrecomp/pull/184) | `win32hle-dinput-relative` | An exclusive DirectInput mouse gets movement, not the pointer | **Yes.** Without it the game's cursor sticks where the pointer met an edge; the controller moves it with `hle_input_motion`. |
-| [#185](https://github.com/sp00nznet/pcrecomp/pull/185) | `win32hle-mouse-wheel` | The mouse wheel, as `WM_MOUSEWHEEL` and DirectInput's z axis; builds on #184 | **Yes.** The wheel and the triggers zoom with it (`hle_input_wheel`). |
-| [#186](https://github.com/sp00nznet/pcrecomp/pull/186) | `win32hle-poll-hook` | A poll hook at each pump, for a host's controller; builds on #184 | **Yes.** `src/host/pad.c` reads the controller there. |
-| [#180](https://github.com/sp00nznet/pcrecomp/pull/180) | `win32hle-present-pacing` | Every flip shown, paced to the display; `Sleep(0)` polling sleeps | No, but recommended: without it frames judder, and the pointer thread takes a core. |
-| [#183](https://github.com/sp00nznet/pcrecomp/pull/183) | `win32hle-handover` | A quieter hand-over between threads, on a condition variable | No: 5% of the main thread back. |
-| [#181](https://github.com/sp00nznet/pcrecomp/pull/181) | `win32hle-dinput-followups` | #159's review follow-ups, and `dinput_selftest.c` | No: correctness for other games. |
-| [#182](https://github.com/sp00nznet/pcrecomp/pull/182) | `win32hle-createfont-width` | `CreateFontA`'s width, as `lfWidth` (#160's follow-up) | No: the game uses `CreateFontIndirectA`. |
+| [#187](https://github.com/sp00nznet/pcrecomp/pull/187) | `win32hle-vulkan` | Direct3D on the GPU through Vulkan (Linux) | **Yes.** The host calls `hle_d3d_vulkan_enable` (a stub where Vulkan's headers are missing). |
 
-DirectX 6 (#154), DirectInput (#159), font widths (#160), the held mouse
-(#161), DirectSound's play cursor (#164) and #154's follow-ups (#158) are in
-`main` now.
-
-The fork's `tpw` branch is upstream `main` with all of these, and the
-commit `app/pcrecomp.lock` names is on it. To build against it:
+That branch is upstream `main` with Vulkan, and the commit
+`app/pcrecomp.lock` names is on it. To build against it:
 
 ```
 cd ../pcrecomp
 git remote add cpressland https://github.com/cpressland/pcrecomp
 git fetch cpressland
-git switch -c tpw cpressland/tpw
+git switch -c tpw cpressland/win32hle-vulkan
 ```
 
-When a PR is merged, it drops off this table and out of `tpw`; once all
-are, build against plain `main`.
+Once #187 is merged, build against plain `main`.
 
 ## Building (macOS)
 
@@ -179,7 +166,7 @@ some-folder/
   tpw-recomp/    <- this repository
 ```
 
-on the fork's `tpw` branch, as above.
+on `main` with the Vulkan branch, as above.
 
 ### In one command
 
@@ -242,7 +229,7 @@ The app is signed ad hoc, not notarized. Sparkle checks each update with its
 own Ed25519 signature: the workflow signs with the `SPARKLE_PRIVATE_KEY`
 secret, and the app holds the public half, `app/sparkle-public-key.txt`.
 pcrecomp is the commit `app/pcrecomp.lock` names: upstream `main` with the
-pending PRs, on the fork's `tpw` branch.
+Vulkan PR, on its branch.
 
 The same tag runs `.github/workflows/flatpak.yml`: `app/linux/build-flatpak.sh`
 builds the Flatpak on x86-64 and arm64 runners (from the tagged commit's
