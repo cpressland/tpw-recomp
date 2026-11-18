@@ -135,14 +135,14 @@ is needed. The 2000-era no-CD `tp.exe`
 ## pcrecomp: pending merges
 
 Everything this game needed from win32hle is in
-[sp00nznet/pcrecomp](https://github.com/sp00nznet/pcrecomp)'s `main` but the
-Vulkan renderer:
+[sp00nznet/pcrecomp](https://github.com/sp00nznet/pcrecomp)'s `main` but these:
 
 | PR | Branch | What it adds | Needed? |
 |----|--------|--------------|---------|
 | [#187](https://github.com/sp00nznet/pcrecomp/pull/187) | `win32hle-vulkan` | Direct3D on the GPU through Vulkan (Linux) | **Yes.** The host calls `hle_d3d_vulkan_enable` (a stub where Vulkan's headers are missing). |
+| [#194](https://github.com/sp00nznet/pcrecomp/pull/194) | `perf-pace-texcache` | Frame pacing lets a frame run 60% of a refresh over; the texture cache converts through a table | No, but recommended: without it the game drops to 30 frames a second for seconds at a time as the camera moves to another part of the park. |
 
-That branch is upstream `main` with Vulkan, and the commit
+`win32hle-vulkan` is upstream `main` with both, and the commit
 `app/pcrecomp.lock` names is on it. To build against it:
 
 ```
@@ -152,7 +152,7 @@ git fetch cpressland
 git switch -c tpw cpressland/win32hle-vulkan
 ```
 
-Once #187 is merged, build against plain `main`.
+Once both are merged, build against plain `main`.
 
 ## Building (macOS)
 
