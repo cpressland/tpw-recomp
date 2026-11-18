@@ -80,6 +80,10 @@ PATCHES = {
     # TPW_LIGHTNING_FLASH=1 (src/host/shims.c).
     0x005679B4: '{ extern int tpw_lightning_flash(void); '
                 'if ((esi & 0xFFu) == 0xA1u && !tpw_lightning_flash()) esi = (esi & ~0xFFu) | 0x12u; }',
+    # A tester's cash, TPW_CASH (src/host/shims.c): the HUD's cash display
+    # (sub_004A0AB0) has just read the player's cash, by the bank's getter
+    # (ecx, the bank), into esi.
+    0x004A0AE3: '{ extern uint32_t tpw_cash(uint32_t, uint32_t); esi = eax = tpw_cash(ecx, esi); }',
     # Movies: their width, and their x when one is given, at 4:3.
     0x0051B0F7: '{ extern uint32_t tpw_movie_w(void); MEM32(0x802460) = tpw_movie_w(); }',
     0x0051B150: '{ extern uint32_t tpw_movie_x(uint32_t); MEM32(0x802458) = tpw_movie_x(ecx); }',

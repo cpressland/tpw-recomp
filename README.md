@@ -291,6 +291,11 @@ Linux launcher (SDL, as the game is); `TPW_LAUNCHER_SHOT=FILE.bmp` with
    movies keep 4:3 too, with black at the sides. Halloween's lightning no
    longer flashes the whole screen to its negative, which on a large bright
    screen is enough to make you flinch (`TPW_LIGHTNING_FLASH=1` brings it back).
+   For testing, `TPW_CASH=N` puts $N in the bank of each park as it opens,
+   to try what a park cannot yet afford; spending and income carry on from
+   there (`flatpak run --env=TPW_CASH=1000000 io.cpressland.ThemeParkWorld`,
+   `open --env TPW_CASH=1000000 -a "Theme Park World"`, or
+   `TPW_CASH=1000000 %command%` in a Steam shortcut's launch options).
    Direct3D draws on the GPU through Metal on a Mac (pcrecomp's
    `d3d_metal.m`) and Vulkan on Linux (`d3d_vulkan.c`, which needs Vulkan's
    headers to build and falls back to software without a Vulkan 1.3 GPU);

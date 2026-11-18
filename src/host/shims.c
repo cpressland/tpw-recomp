@@ -372,3 +372,28 @@ int tpw_lightning_flash(void) {
     if (on < 0) { const char *e = getenv("TPW_LIGHTNING_FLASH"); on = e && *e == '1'; }
     return on;
 }
+
+
+/* A tester's cash (run_lift.py): TPW_CASH=N gives the player's park N in the
+ * bank when it opens, to try what costs more than a park has (a coaster, say)
+ * without playing for it. The HUD reads the cash every frame through the
+ * bank's getter (sub_006AD810: the field at +0xC); the first read for a bank
+ * the HUD has not seen sets that field. The game's own spending and income
+ * carry on from there. Unset, nothing changes. */
+uint32_t tpw_cash(uint32_t bank, uint32_t cash) {
+    static int want_set = -1;
+    static int32_t want;
+    static uint32_t seen;
+    if (want_set < 0) {
+        const char *e = getenv("TPW_CASH");
+        char *end;
+        long v = e ? strtol(e, &end, 10) : 0;
+        want_set = e && *e && !*end && v >= 0 && v <= 0x7FFFFFFF;
+        want = (int32_t)v;
+        if (e && !want_set) fprintf(stderr, "TPW_CASH: a whole number of dollars, 0 to 2147483647\n");
+    }
+    if (!want_set || !bank || bank == seen) return cash;
+    seen = bank;
+    MEM32(bank + 0xC) = (uint32_t)want;
+    return (uint32_t)want;
+}
