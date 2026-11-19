@@ -83,6 +83,37 @@ final class Installer: ObservableObject {
         return p.terminationStatus == 0
     }
 
+    /// --install: install.py with what the app carries and no window, its
+    /// output as it comes, as the AppImage's AppRun has it, for a launcher that
+    /// shows the progress itself (RecompLauncher). Its exit status.
+    static func runWithoutWindow(_ extra: [String]) -> Int32 {
+        guard hasCompiler() else {
+            print("error: this Mac needs Apple's Command Line Tools (the compiler): open Theme Park World.app once, or run xcode-select --install")
+            return 1
+        }
+        clearQuarantine()
+        let p = Process()
+        p.executableURL = Paths.python
+        p.arguments = arguments(extra)
+        do { try p.run() } catch {
+            print("error: the installer could not run: \(error.localizedDescription)")
+            return 1
+        }
+        p.waitUntilExit()
+        return p.terminationStatus
+    }
+
+    /// A download's quarantine reaches every file in the app; the tools it
+    /// runs to build the game are cleared of it once the app itself was let run.
+    static func clearQuarantine() {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
+        p.arguments = ["-dr", "com.apple.quarantine", Paths.resources.appendingPathComponent("toolchain").path]
+        p.standardError = FileHandle.nullDevice
+        try? p.run()
+        p.waitUntilExit()
+    }
+
     /// Xcode's command line tools: Apple's own installer, then wait for clang.
     func installTools() {
         let p = Process()

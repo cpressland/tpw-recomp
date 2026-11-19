@@ -28,6 +28,8 @@ Without those, CMake, Ninja and SDL come from the PATH and pkg-config.
 
 Progress goes to stdout as plain lines; `@step i n title`, `@progress
 fraction` and `@error text` lines are for a front end to show.
+--progress-lines adds `progress fraction title` lines for the whole build,
+as RecompLauncher's setup screen reads them (recomplauncher.json).
 """
 import argparse
 import filecmp
@@ -63,7 +65,8 @@ else:
                                 'theme-park-world')
     LIBRARY = 'libtpw.so'
 # What a player's run writes into the game folder, carried over a new one.
-KEEP = ('save', os.path.join('Data', 'Resolution.sam'))   # as the disc spells them: Linux minds the case
+KEEP = ('save', os.path.join('Data', 'Resolution.sam'),   # as the disc spells them: Linux minds the case
+        'settings.ini')                                     # src/host/settings.c
 SPACE_NEEDED = 3 << 30       # the disc twice over, the lift and the build, at their peak
 
 # --download: the two files, from where this project keeps copies of them
@@ -82,8 +85,31 @@ class Failed(Exception):
     pass
 
 
+# --progress-lines: the steps also as `progress 0.4 Title`, one fraction for the
+# whole build, the lines RecompLauncher's setup screen reads.
+PROGRESS_LINES = False
+_step = [0, 0, '']           # i, n, title of the step under way
+
+
 def say(*a):
     print(*a, flush=True)
+    if PROGRESS_LINES:
+        progress_line(' '.join(str(x) for x in a))
+
+
+def progress_line(line):
+    if line.startswith('@step '):
+        i, n, title = line[6:].split(' ', 2)
+        _step[:] = [int(i), int(n), title]
+        fraction = 0.0
+    elif line.startswith('@progress '):
+        fraction = min(max(float(line[10:]), 0.0), 1.0)      # -1, no measure: the step's start
+    else:
+        return
+    i, n, title = _step
+    if not n:
+        return
+    print(f'progress {(i - 1 + fraction) / n:.3f} {title}', flush=True)
 
 
 def md5(path, progress=None):
@@ -491,7 +517,11 @@ def main():
     ap.add_argument('--force', action='store_true', help='redo every step')
     ap.add_argument('--status', action='store_true', help='print what a run would redo, as JSON')
     ap.add_argument('--export-sources', metavar='DIR', help='copy the sources the build needs to DIR, and stop')
+    ap.add_argument('--progress-lines', action='store_true',
+                    help='also print `progress 0.4 Title` lines (RecompLauncher\'s setup screen)')
     a = ap.parse_args()
+    global PROGRESS_LINES
+    PROGRESS_LINES = a.progress_lines
     if a.sdl_frameworks:
         a.sdl_frameworks = os.path.abspath(a.sdl_frameworks)
     try:

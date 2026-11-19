@@ -1,7 +1,7 @@
 #!/bin/sh
 # A release: Theme Park World.app with updates on, a disk image to drag it
-# from, a zip for Sparkle and the curl installer, and the appcast that
-# points Sparkle at the zip. .github/workflows/release.yml runs it for a tag.
+# from, a zip for Sparkle and the curl installer, one for RecompLauncher, and
+# the appcast that points Sparkle at the zip. .github/workflows/release.yml runs it for a tag.
 #
 #   SPARKLE_PRIVATE_KEY=... VERSION=1.2.0 app/release.sh    # -> build-app/release/
 #
@@ -33,6 +33,13 @@ rm -rf "$stage"
 cp "$R/$NAME-$VERSION.zip" "$R/$NAME.zip"
 cp "$R/$NAME-$VERSION.dmg" "$R/$NAME.dmg"
 cp app/install.sh "$R/install.sh"
+# For RecompLauncher: the app with recomplauncher.json beside it, at the top
+# of a zip whose name says the system it is for. Sparkle's zip stays as it is.
+stage=$(mktemp -d)
+ditto "$APP" "$stage/Theme Park World.app"
+cp recomplauncher.json "$stage/"
+ditto -c -k --sequesterRsrc "$stage" "$R/$NAME-$VERSION-macos-arm64.zip"
+rm -rf "$stage"
 
 # The appcast: the one item this release is.
 sig=$(printf '%s' "$SPARKLE_PRIVATE_KEY" | "$OUT/toolchain/sparkle/bin/sign_update" --ed-key-file - "$R/$NAME-$VERSION.zip")

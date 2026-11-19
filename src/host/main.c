@@ -36,6 +36,7 @@ extern const uint32_t tpw_entry_va;   /* recomp_dispatch.c */
 int  script_arg(int argc, char **argv, int i);   /* script.c */
 void pad_start(void);                             /* pad.c */
 void script_start(void);
+void tpw_settings(const char *game_dir);          /* settings.c */
 
 #define TPW_IMAGE_BASE 0x00400000u
 #define HKLM 0x80000002u
@@ -329,6 +330,7 @@ __attribute__((visibility("default"))) int tpw_main(int argc, char **argv) {
     }
     char game_full[PATH_MAX], exe_host[PATH_MAX + 16];
     if (!realpath(game, game_full)) { fprintf(stderr, "no game folder at %s\n", game); return 1; }
+    tpw_settings(game_full);             /* before anything reads the variables it sets */
     hle_set_drive('C', game_full);
     hle_set_drive('D', game_full);       /* the disc, as a CD-ROM (shims.c) */
     if (!hle_host_path("C:\\" TPW_EXE_NAME, exe_host, sizeof exe_host)) {

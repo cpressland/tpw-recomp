@@ -1,5 +1,7 @@
 # Theme Park World — Static Recompilation
 
+<a href="https://recomplauncher.com/game/tpw-recomp"><picture><source media="(prefers-color-scheme: dark)" srcset="https://recomplauncher.com/assets/press/launcher/badge-light.svg"><img alt="Get it on RecompLauncher" src="https://recomplauncher.com/assets/press/launcher/badge-dark.svg" height="48"></picture></a>
+
 A static recompilation of Bullfrog's **Theme Park World** (1999), version
 2.0, from its shipping Win32 binary to native C, targeting **macOS** first
 and Linux after. Built on the [pcrecomp](https://github.com/sp00nznet/pcrecomp)
@@ -46,6 +48,9 @@ When an update needs the game rebuilt, it does that on its next launch, in a
 few minutes, without downloading the disc again. Your parks and saves are
 kept in `~/Library/Application Support/Theme Park World`.
 
+A `portable.txt` beside the app (or beside the AppImage on Linux) keeps the
+game, its saves and its logs in a `data` folder beside it instead.
+
 ## Playing on Linux and Steam Deck
 
 Theme Park World is a Flatpak for any Linux on x86-64 or arm64: a Steam
@@ -82,6 +87,23 @@ tools and SDL through it. `--install` runs the build without a window
 (`--install --iso TPWORLD.ISO --patch themeparkworld20patch.zip` for your own
 two files, `--install --status` to see what's out of date). Built by
 `app/linux/build-appimage.sh` on Ubuntu 22.04 (`.github/workflows/appimage.yml`).
+
+### Or from RecompLauncher
+
+[RecompLauncher](https://recomplauncher.com/game/tpw-recomp) installs the
+AppImage on Linux and the app on a Mac, and keeps them up to date. Its setup
+screen asks for your own two files (the same disc image and patch as above),
+builds the game with them and shows the build's progress, then Play starts
+the game directly. That comes from `recomplauncher.json`, which the AppImage
+carries at its top and the Mac release has beside the app, in
+`Theme-Park-World-VERSION-macos-arm64.zip`. The build is
+`--install --progress-lines --iso … --patch …` (the app takes `--install`
+as AppRun does; `--progress-lines` adds the `progress 0.4 Title` lines the
+launcher reads), and Play sets `TPW_PLAY_NOW`, which presses Play once the
+game is built. Its settings are the game's own options below and those in
+`settings.ini`. On a Mac, Sparkle stays off when RecompLauncher starts the
+app (`RECOMPLAUNCHER` is set), since the launcher installs the updates.
+Without these, the app and the AppImage are exactly as they were.
 
 The game holds the mouse inside its picture while it has focus, as on a
 Mac: Ctrl+Super lets it go and a click takes it back. Direct3D draws on the
@@ -211,8 +233,10 @@ runs in a child process, so a crash ends in an alert offering the log.
 - `TPW_HOME` points the app at another game folder. `TPW_ISO` and
   `TPW_PATCH` give it your own two files and start the build.
   `TPW_DOWNLOAD_BASE` downloads them from elsewhere.
-- For tests: `TPW_BUILD_NOW` presses Download and Build, and `TPW_PLAY_NOW`
-  presses Play, once the game is built.
+- `--install [install.py's arguments]` builds the game without a window, as
+  the AppImage's does (RecompLauncher's setup step).
+- `TPW_PLAY_NOW` presses Play once the game is built (RecompLauncher's Play),
+  and for tests `TPW_BUILD_NOW` presses Download and Build.
 - `TPW_SNAPSHOT=DIR` draws the setup window's states into DIR as PNGs.
 
 ### Releases
@@ -222,6 +246,8 @@ Pushing a tag `v1.2.3` runs `.github/workflows/release.yml`, which runs
 
 - `Theme-Park-World-1.2.3.dmg`;
 - the zip that Sparkle and `install.sh` fetch;
+- `Theme-Park-World-1.2.3-macos-arm64.zip`, the app with
+  `recomplauncher.json` beside it, for RecompLauncher;
 - `install.sh`;
 - `appcast.xml`, Sparkle's feed.
 
@@ -313,6 +339,12 @@ Linux launcher (SDL, as the game is); `TPW_LAUNCHER_SHOT=FILE.bmp` with
    refreshes, never fewer than keep it near 60 a second (2 on a 120 Hz
    display), and the time between is idle: `HLE_MAX_FPS=0` lifts the cap.
    On an M1 Pro a park takes about 40% of one core, down from 120%.
+
+   `settings.ini` in the game folder holds the options above that are
+   variables (`max_fps`, `stretch_hud`, `lightning_flash`), commented, so
+   they can be changed without a terminal. The first start writes it with
+   their defaults; a variable set in the environment wins over it
+   (`src/host/settings.c`).
 
 ## License
 
