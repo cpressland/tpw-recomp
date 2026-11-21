@@ -98,13 +98,11 @@ def main():
     try:
         payload = extract(a.patch_zip, work)
         dll = applier(payload, work)
-        # A copy to patch: APFS clones it instantly where it can.
-        try:
+        # macOS `cp` has `-c`, which does an instant clone on APFS.
+        # Other platforms just use the regular `copytree` below, as does macOS
+        # if the `cp` fails before it's created `a.out`.
+        if sys.platform == 'darwin':
             subprocess.run(['cp', '-Rc', a.disc, a.out], check=False)
-        except FileNotFoundError:
-            # if this fails for any reason, we can ignore it.
-            # it gets copied below anyway.
-            pass
         if not os.path.exists(a.out):
             shutil.copytree(a.disc, a.out)
         failed = 0
