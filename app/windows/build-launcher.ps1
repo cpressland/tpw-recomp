@@ -58,8 +58,17 @@ $windres = Join-Path (Split-Path (Get-Command $cc).Source) 'windres.exe'
 & $windres app/windows/launcher.rc @version -I $obj -O coff -o (Join-Path $obj 'launcher.res.o')
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
+# We pass the version to launcher.c in a header, because some versions of
+# PowerShell drop the quotes from -DTPW_VERSION="1.2.0" on its way to clang.
+# Doing it this way makes it less reliant on the user being fully up to date.
+$versionHeader = @()
+if ($env:TPW_VERSION) {
+    $h = Join-Path $obj 'version.h'
+    Set-Content $h "#define TPW_VERSION `"$env:TPW_VERSION`""
+    $versionHeader = '-include', $h
+}
 $exe = Join-Path $out 'Theme Park World.exe'
-& $cc -O2 -Wall -mwindows "-DTPW_VERSION=`"$env:TPW_VERSION`"" @flags `
+& $cc -O2 -Wall -mwindows @versionHeader @flags `
     app/sdl-launcher/launcher.c app/sdl-launcher/launcher_os_win32.c (Join-Path $obj 'launcher.res.o') `
     -lSDL2 -lSDL2_ttf -o $exe
 if ($LASTEXITCODE) { exit $LASTEXITCODE }

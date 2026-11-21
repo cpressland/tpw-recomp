@@ -42,5 +42,5 @@ foreach ($p in $pngs) { $w.Write($p) }
 $w.Flush()
 # WriteAllBytes takes a path relative to .NET's working directory, which
 # isn't always PowerShell's, so the path is made absolute first.
-$Out = [System.IO.Path]::GetFullPath($Out, (Get-Location).Path)
+$Out = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Out)
 [System.IO.File]::WriteAllBytes($Out, $ico.ToArray())
