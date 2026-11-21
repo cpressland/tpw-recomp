@@ -47,6 +47,8 @@
 /* ---- where things are ------------------------------------------------------ */
 
 static char g_share[1024], g_python[1024], g_home[1024], g_logs[1100];
+static int g_tools_ok;          /* os_bundled_tools: 0 if the build can't run, */
+static char g_tools_why[512];   /* and why */
 
 static const char *env_or(const char *name, const char *dflt) {
     const char *v = getenv(name);
@@ -59,7 +61,8 @@ static void paths(void) {
     snprintf(g_share, sizeof g_share, "%s", env_or("TPW_SHARE", share));
     snprintf(g_python, sizeof g_python, "%s", env_or("TPW_PYTHON", python));
     snprintf(g_home, sizeof g_home, "%s", env_or("TPW_HOME", home));
-    snprintf(g_logs, sizeof g_logs, "%s/logs", g_home);
+    snprintf(g_logs, sizeof g_logs, "%s" OS_SEP "logs", g_home);
+    g_tools_ok = os_bundled_tools(g_tools_why, sizeof g_tools_why) == 0;
 }
 
 /* ---- the installer ------------------------------------------------------- */
@@ -83,8 +86,9 @@ static struct {
 
 static void install_argv(const char **argv, int *n, const char *extra) {
     static char installer[1200], pcrecomp[1200];
-    snprintf(installer, sizeof installer, "%s/src/tpw/tools/install/install.py", g_share);
-    snprintf(pcrecomp, sizeof pcrecomp, "%s/src/pcrecomp", g_share);
+    snprintf(installer, sizeof installer, "%s" OS_SEP "src" OS_SEP "tpw" OS_SEP "tools" OS_SEP "install" OS_SEP "install.py",
+             g_share);
+    snprintf(pcrecomp, sizeof pcrecomp, "%s" OS_SEP "src" OS_SEP "pcrecomp", g_share);
     *n = 0;
     argv[(*n)++] = g_python;
     argv[(*n)++] = "-I";
@@ -127,7 +131,7 @@ static void start_build(void) {
     install_argv(argv, &n, "--download");
     os_mkdirs(g_logs);
     char logpath[1200];
-    snprintf(logpath, sizeof logpath, "%s/install.log", g_logs);
+    snprintf(logpath, sizeof logpath, "%s" OS_SEP "install.log", g_logs);
     if (S.log) fclose(S.log);
     /* Opened in binary mode so as to write the installer's output verbatim,
      * with no line-ending transformations et cetera. */
@@ -207,12 +211,12 @@ static void cancel_build(void) {
 /* Runs the game and waits. 1: it crashed (the window comes back to say so). */
 static int play(SDL_Window *win, int argc, char **argv) {
     char tpw[1200], game[1200], first[1200], logpath[1200], old[1200];
-    snprintf(tpw, sizeof tpw, "%s/%s", g_home, OS_TPW_EXE);
-    snprintf(game, sizeof game, "%s/game", g_home);
-    snprintf(first, sizeof first, "%s/.launched", g_home);
+    snprintf(tpw, sizeof tpw, "%s" OS_SEP "%s", g_home, OS_TPW_EXE);
+    snprintf(game, sizeof game, "%s" OS_SEP "game", g_home);
+    snprintf(first, sizeof first, "%s" OS_SEP ".launched", g_home);
     os_mkdirs(g_logs);
-    snprintf(logpath, sizeof logpath, "%s/tpw.log", g_logs);
-    snprintf(old, sizeof old, "%s/tpw.1.log", g_logs);
+    snprintf(logpath, sizeof logpath, "%s" OS_SEP "tpw.log", g_logs);
+    snprintf(old, sizeof old, "%s" OS_SEP "tpw.1.log", g_logs);
     os_rename(logpath, old);
 
     const char *args[64];
@@ -256,7 +260,7 @@ static TTF_Font *font(int bold, int size) {
     dirs[0] = env_or("TPW_FONTS", "/usr/share/fonts/dejavu");
     char p[1100];
     for (int i = 0; dirs[i]; i++) {
-        snprintf(p, sizeof p, "%s/%s", dirs[i], bold ? "DejaVuSans-Bold.ttf" : "DejaVuSans.ttf");
+        snprintf(p, sizeof p, "%s" OS_SEP "%s", dirs[i], bold ? "DejaVuSans-Bold.ttf" : "DejaVuSans.ttf");
         TTF_Font *f = TTF_OpenFont(p, size);
         if (f) return f;
     }
@@ -357,7 +361,7 @@ static const SDL_Color WHITE = { 255, 255, 255, 255 }, SOFT = { 225, 220, 245, 2
 
 static void draw(void) {
     background();
-    const char *title = S.phase == READY || S.phase == CRASHED || S.phase == CHECKING ? TITLE
+    const char *title = S.phase == READY || S.phase == CRASHED || S.phase == CHECKING || !g_tools_ok ? TITLE
                       : S.needs_disc ? "Set up " TITLE : "Updating " TITLE;
     text(F_TITLE, 48, 48, 0, WHITE, "%s", title);
     int y = 112;
@@ -408,8 +412,9 @@ static void draw(void) {
     case FAILED:
     case CRASHED:
         text(F_BODY, 48, y, W - 96, WHITE, "%s", S.message);
-        text(F_SMALL, 48, y + 110, W - 96, DIM, "The logs are in %s", g_logs);
-        if (S.phase == FAILED) buttons(2, "Quit", A_QUIT, "Try Again", A_RETRY);
+        if (g_tools_ok) text(F_SMALL, 48, y + 110, W - 96, DIM, "The logs are in %s", g_logs);
+        if (S.phase == FAILED && !g_tools_ok) buttons(1, "Quit", A_QUIT);   /* no logs, and trying again can't help */
+        else if (S.phase == FAILED) buttons(2, "Quit", A_QUIT, "Try Again", A_RETRY);
         else buttons(2, "Quit", A_QUIT, "Play Again", A_PLAY);
         break;
     }
@@ -500,7 +505,12 @@ int main(int argc, char **argv) {
 
     draw();
     SDL_RenderPresent(R);
-    check_status();
+    if (g_tools_ok) {
+        check_status();
+    } else {
+        S.phase = FAILED;
+        snprintf(S.message, sizeof S.message, "%s", g_tools_why);
+    }
     FOCUS = 99;                                       /* the main button (clamped to the last) */
 
     for (int quit = 0; !quit;) {

@@ -29,6 +29,8 @@ void os_default_paths(char *share, char *python, char *home, size_t n) {
     else snprintf(home, n, "%s/.local/share/theme-park-world", h && *h ? h : ".");
 }
 
+int os_bundled_tools(char *why, size_t n) { (void)why, (void)n; return 0; }
+
 int os_exists(const char *path) { struct stat st; return stat(path, &st) == 0; }
 
 void os_mkdirs(const char *path) {

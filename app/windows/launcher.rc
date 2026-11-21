@@ -1,0 +1,42 @@
+/* The launcher's resources: its icon, name, and version.
+ *
+ * Compiled by app/windows/build-launcher.ps1 with llvm-mingw's windres, which
+ * runs it through clang's preprocessor first. The script passes the version,
+ * like -DTPW_VERSION_NUMS=1,2,0,0 -DTPW_VERSION=1.2.0.
+ * The version is passed without quotes and then stringified in here to avoid
+ * any quoting issues in transit from the shell to the preprocessor.
+ *
+ * icon.ico is built from the Linux icon by app/windows/make-icon.ps1 */
+#ifndef TPW_VERSION_NUMS
+#define TPW_VERSION_NUMS 0,0,0,0
+#endif
+/* important: TPW_VERSION cannot be empty, so if it's missing provide a default. */
+#ifndef TPW_VERSION
+#define TPW_VERSION 0.0.0
+#endif
+#define STRING(x) #x
+#define TPW_VERSION_STR_OF(x) STRING(x)
+#define TPW_VERSION_STR TPW_VERSION_STR_OF(TPW_VERSION)
+
+1 ICON "icon.ico"
+
+1 VERSIONINFO
+FILEVERSION TPW_VERSION_NUMS
+PRODUCTVERSION TPW_VERSION_NUMS
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904B0"
+    BEGIN
+      VALUE "FileDescription", "Theme Park World"
+      VALUE "ProductName", "Theme Park World"
+      VALUE "FileVersion", TPW_VERSION_STR
+      VALUE "ProductVersion", TPW_VERSION_STR
+      VALUE "OriginalFilename", "Theme Park World.exe"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0409, 1200
+  END
+END

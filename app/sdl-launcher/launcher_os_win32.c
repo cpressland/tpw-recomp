@@ -8,7 +8,7 @@
 
 #include "launcher_os.h"
 
-const char *const OS_TPW_EXE = "build/host/tpw.exe";
+const char *const OS_TPW_EXE = "build\\host\\tpw.exe";
 
 /* ---- UTF-8 and UTF-16 ---- */
 
@@ -28,16 +28,28 @@ static void narrow(const wchar_t *w, char *out, size_t n) {
 
 /* ---- paths and files ---- */
 
-/* The launcher's own directory holds the bundle (T9): the sources under share,
- * and an embedded Python under python. The game and its build go in
- * %LOCALAPPDATA%\Theme Park World, as install.py's default. */
+/* The launcher's own directory, written to dir (MAX_PATH characters).
+ * Returns 0 on success, -1 if it can't be found.
+ * Failure here usually means the path to the exe is longer than MAX_PATH. */
+static int exe_dir(wchar_t *dir) {
+    DWORD len = GetModuleFileNameW(NULL, dir, MAX_PATH);
+    if (len == 0 || len == MAX_PATH) return -1;
+    wchar_t *slash = wcsrchr(dir, L'\\');
+    if (slash) *slash = 0;
+    return 0;
+}
+
+/* The launcher's directory contains the package:
+ * - The sources in share/
+ * - A python in python/
+ * The game and its build go into %localappdata%/Theme Park World by default. */
 void os_default_paths(char *share, char *python, char *home, size_t n) {
     wchar_t exe[MAX_PATH];
     char dir[MAX_PATH * 3];
-    DWORD len = GetModuleFileNameW(NULL, exe, MAX_PATH);
-    if (len == 0 || len == MAX_PATH) wcscpy(exe, L".\\launcher.exe");
-    wchar_t *slash = wcsrchr(exe, L'\\');
-    if (slash) *slash = 0;
+    /* If we can't get the launcher directory, the paths become relative.
+     * These are never actually used, because os_bundled_tools will fail too,
+     * but it's handled here anyway just for safety's sake. */
+    if (exe_dir(exe) != 0) wcscpy(exe, L".");
     narrow(exe, dir, sizeof dir);
     snprintf(share, n, "%s\\share", dir);
     snprintf(python, n, "%s\\python\\python.exe", dir);
@@ -47,6 +59,83 @@ void os_default_paths(char *share, char *python, char *home, size_t n) {
     if (local && *local) narrow(local, base, sizeof base);
     else snprintf(base, sizeof base, "%s", dir);
     snprintf(home, n, "%s\\Theme Park World", base);
+}
+
+/* The longest string needed in os_bundled_tools is TPW_SDL_PREFIX.
+ * It's two copies of the launcher's path (up to MAX_PATH chars each), with
+ * /tools/SDL2 and /tools/SDL2_ttf appended, plus a terminating null (27 chars). */
+#define VALUE_LEN (2 * MAX_PATH + 32)
+
+/* Set name to value, unless name is already set, or value's path isn't in the package.
+ *
+ * When value is several paths separated by semicolons (like TPW_SDL_PREFIX),
+ * only the first is checked for existence. That's enough to tell the package
+ * from a plain build of the launcher; if the package is missing the others,
+ * install.py will fail and report what's missing. */
+static int set_from_package(const wchar_t *name, const wchar_t *value) {
+    if (GetEnvironmentVariableW(name, NULL, 0) > 0) return 0;
+
+    /* The first path is part of value, so it always fits. */
+    wchar_t first[VALUE_LEN];
+    swprintf(first, VALUE_LEN, L"%.*ls", (int)wcscspn(value, L";"), value);
+    if (GetFileAttributesW(first) == INVALID_FILE_ATTRIBUTES) return 0;
+
+    return SetEnvironmentVariableW(name, value) != 0;
+}
+
+/* The packaged build tools are under tools/ (per app/windows/build-package.ps1):
+ * - llvm-mingw's clang
+ * - SDL's and SDL_ttf's MinGW development packages
+ * - Vulkan's headers.
+ *
+ * When launched from a plain build of the launcher
+ * (like build-launcher\Theme Park World.exe), there are none, and the build
+ * uses paths from the environment instead.
+ *
+ * swprintf returns <0 if its text doesn't fit in the provided buffer. This
+ * can't actually happen right now, but if a future change (for instance adding
+ * more SDL packages to TPW_SDL_PREFIX) causes the strings to get too long, we
+ * fail with an error about exceeding the maximum path length. */
+int os_bundled_tools(char *why, size_t n) {
+    wchar_t dir[MAX_PATH], value[VALUE_LEN];
+    if (exe_dir(dir) != 0) goto fail;
+
+    if (swprintf(value, VALUE_LEN, L"%ls\\tools\\llvm-mingw\\bin\\clang.exe", dir) < 0) goto fail;
+    if (set_from_package(L"CC", value)) {
+        /* Put llvm-mingw's bin directory into PATH, to ensure clang and
+         * CMake always find the llvm-mingw tools they depend on.
+         *
+         * We malloc old_size+1 just in case the existing PATH is empty, so we
+         * get at least one character for the null-terminator.
+         *
+         * The new PATH consists of, in order:
+         * - The launcher's directory, up to MAX_PATH characters
+         * - \tools\llvm-mingw\bin; 22 characters
+         * - The existing PATH, whose size (including null-terminator) is in old_size */
+        DWORD old_size = GetEnvironmentVariableW(L"PATH", NULL, 0);
+        size_t len = old_size + MAX_PATH + 32;
+        wchar_t *old = malloc((old_size + 1) * sizeof *old);
+        wchar_t *both = malloc(len * sizeof *both);
+        int ok = old && both;
+        if (ok) {
+            if (!GetEnvironmentVariableW(L"PATH", old, old_size + 1)) old[0] = 0;
+            ok = swprintf(both, len, L"%ls\\tools\\llvm-mingw\\bin;%ls", dir, old) >= 0
+                 && SetEnvironmentVariableW(L"PATH", both);
+        }
+        free(old), free(both);
+        if (!ok) goto fail;
+    }
+
+    if (swprintf(value, VALUE_LEN, L"%ls\\tools\\SDL2;%ls\\tools\\SDL2_ttf", dir, dir) < 0) goto fail;
+    set_from_package(L"TPW_SDL_PREFIX", value);
+
+    if (swprintf(value, VALUE_LEN, L"%ls\\tools\\Vulkan-Headers", dir) < 0) goto fail;
+    set_from_package(L"TPW_VULKAN_PREFIX", value);
+    return 0;
+fail:
+    snprintf(why, n, "The launcher could not set up its build tools. This happens when the path to "
+             "the Theme Park World directory is too long: move it somewhere shorter, like C:\\Games.");
+    return -1;
 }
 
 int os_exists(const char *path) {
@@ -137,10 +226,10 @@ static int env_apply(const char *const *env, env_save *saved, int max) {
         *eq = 0;
         env_save *e = &saved[n++];
         e->name = w;
-        DWORD need = GetEnvironmentVariableW(w, NULL, 0);
-        e->had = need > 0;
-        e->old = e->had ? malloc(need * sizeof(wchar_t)) : NULL;
-        if (e->old) GetEnvironmentVariableW(w, e->old, need);
+        DWORD old_size = GetEnvironmentVariableW(w, NULL, 0);
+        e->had = old_size > 0;
+        e->old = e->had ? malloc(old_size * sizeof(wchar_t)) : NULL;
+        if (e->old) GetEnvironmentVariableW(w, e->old, old_size);
         SetEnvironmentVariableW(w, eq + 1);
     }
     return n;

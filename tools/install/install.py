@@ -233,7 +233,10 @@ def build_jobs():
 def find_tools():
     """CMake and Ninja: $TPW_CMAKE (the AppImage's, copied to where it stays
     put: CMake names itself in the build by its real path), this Python's own
-    packages (the app's), then the PATH."""
+    packages (the app's), then the PATH.
+
+    On Mac and Linux, Ninja is located next to python. On Windows, it's under
+    python/Scripts/ninja.exe. We try both locations."""
     cm = os.environ.get('TPW_CMAKE')
     if not (cm and os.access(cm, os.X_OK)):
         try:
@@ -241,10 +244,12 @@ def find_tools():
             cm = os.path.join(cmake.CMAKE_BIN_DIR, 'cmake')
         except ImportError:
             cm = shutil.which('cmake')
-    nj = os.path.join(os.path.dirname(sys.executable), 'ninja.exe' if sys.platform == 'win32' else 'ninja')
-    if not os.access(nj, os.X_OK):
-        nj = shutil.which('ninja')
-    return cm, nj
+    name = 'ninja.exe' if sys.platform == 'win32' else 'ninja'
+    here = os.path.dirname(sys.executable)
+    for nj in (os.path.join(here, name), os.path.join(here, 'Scripts', name)):
+        if os.access(nj, os.X_OK):
+            return cm, nj
+    return cm, shutil.which('ninja')
 
 
 class Install:
@@ -504,7 +509,7 @@ class Install:
                 '--work', self.analysis, '--out', self.gen)
 
     def compile(self):
-        # A build folder made another way (other sources, other libraries) starts again.
+        # A build directory made another way (other sources, other libraries) starts again.
         # From pkg-config, SDL's flags themselves: CMake keeps what it found
         # first, and an app update (the Flatpak's) can move them.
         extra = []
@@ -516,7 +521,10 @@ class Install:
             # unix: ask pkg-config for SDL package path
             libs = self.sdl or subprocess.run(['pkg-config', '--cflags', '--libs', 'sdl2', 'SDL2_ttf'],
                                               capture_output=True, text=True).stdout.strip()
-        config = [self.tpw_src, self.pc_src, libs, self.cmake]
+        # On Windows we want a specific compiler (like the packaged clang)
+        # which is located inside extra, so that's added to the config as well,
+        # to trigger a reconfigure & rebuild if the compiler changed.
+        config = [self.tpw_src, self.pc_src, libs, self.cmake, *extra]
         if self.state.get('host_config') != config:
             shutil.rmtree(self.host, ignore_errors=True)
         if not os.path.exists(os.path.join(self.host, 'build.ninja')):

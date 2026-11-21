@@ -18,8 +18,39 @@
  * Each is written to its buffer of n bytes. */
 void os_default_paths(char *share, char *python, char *home, size_t n);
 
+/* Point the build at the tools bundled in the package, by setting the
+ * environment variables for install.py (like CC and TPW_SDL_PREFIX) in the
+ * launcher's environment, which is then inherited by the installer.
+ * A variable that is already set is left alone.
+ * Returns 0 on success, -1 on failure.
+ * On failure, writes the reason into why, up to n bytes.
+ * On Linux this does nothing and returns 0: the AppImage's AppRun and the
+ * Flatpak's manifest handle setting the build up instead. */
+int os_bundled_tools(char *why, size_t n);
+
 /* The game's executable in the build directory, like build/host/tpw. */
 extern const char *const OS_TPW_EXE;
+
+/* Path separator for paths built by the launcher, as a string literal to join
+ * with others (like "%s" OS_SEP "logs").
+ *
+ * We still use backslashes for Windows because the Win32 API returns paths that
+ * are backslash-separated, and if we join those with our own paths for display
+ * to the user, we don't want to mix both separators in the same path.
+ * For instance, if we just used / everywhere, on failure the user might see:
+ *
+ *    The logs are in C:\Users\you\AppData\Local\Theme Park World/logs
+ *
+ * Hardly the end of the world, but it looks amateurish.
+ *
+ * Note: This is here to keep launcher.c unaware of which platform it's on. The
+ * launcher_os_*.c files just use their own separators directly, mostly because
+ * "a/b/c" is easier to read than "a" OS_SEP "b" OS_SEP "c". */
+#ifdef _WIN32
+#define OS_SEP "\\"
+#else
+#define OS_SEP "/"
+#endif
 
 /* Return 1 if path exists, else 0. */
 int os_exists(const char *path);
