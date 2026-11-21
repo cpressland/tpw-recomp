@@ -1,6 +1,7 @@
-# The pcrecomp a release builds with (.github/workflows/release.yml and the
-# Linux builds): upstream main with the Vulkan PR (#187) and the pacing and
-# texture-cache PR (#194, README), a commit on the fork's win32hle-vulkan
-# branch; plain main once both are merged.
+# The pcrecomp a release builds with (.github/workflows/release.yml, the Linux
+# builds and the Windows package): upstream main with the Vulkan PR (#187) and
+# the pacing and texture-cache PR (#194, README), plus the OS layer that lets
+# win32hle run on Windows. It's the head of the fork's win32hle-os-layer
+# branch, which is built on win32hle-vulkan.
 repository=cpressland/pcrecomp
-ref=f0a3fcc371397a25b2e97108423870d625fad727
+ref=fd935fc07a64697e7e6639f7f142ea3f771b90a0

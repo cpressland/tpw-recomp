@@ -142,17 +142,20 @@ Everything this game needed from win32hle is in
 | [#187](https://github.com/sp00nznet/pcrecomp/pull/187) | `win32hle-vulkan` | Direct3D on the GPU through Vulkan (Linux) | **Yes.** The host calls `hle_d3d_vulkan_enable` (a stub where Vulkan's headers are missing). |
 | [#194](https://github.com/sp00nznet/pcrecomp/pull/194) | `perf-pace-texcache` | Frame pacing lets a frame run 60% of a refresh over; the texture cache converts through a table | No, but recommended: without it the game drops to 30 frames a second for seconds at a time as the camera moves to another part of the park. |
 
-`win32hle-vulkan` is upstream `main` with both, and the commit
-`app/pcrecomp.lock` names is on it. To build against it:
+`win32hle-vulkan` is upstream `main` with both. The Windows build also needs
+the OS layer, which isn't an upstream PR yet: it's on cpressland's
+`win32hle-os-layer` branch, built on `win32hle-vulkan`. The commit
+`app/pcrecomp.lock` names is the head of `win32hle-os-layer`. To build
+against it:
 
 ```
 cd ../pcrecomp
 git remote add cpressland https://github.com/cpressland/pcrecomp
 git fetch cpressland
-git switch -c tpw cpressland/win32hle-vulkan
+git switch -c tpw cpressland/win32hle-os-layer
 ```
 
-Once both are merged, build against plain `main`.
+Once all three are merged, build against plain `main`.
 
 ## Building (macOS)
 
@@ -229,7 +232,7 @@ The app is signed ad hoc, not notarized. Sparkle checks each update with its
 own Ed25519 signature: the workflow signs with the `SPARKLE_PRIVATE_KEY`
 secret, and the app holds the public half, `app/sparkle-public-key.txt`.
 pcrecomp is the commit `app/pcrecomp.lock` names: upstream `main` with the
-Vulkan PR, on its branch.
+Vulkan PR and the OS layer, on cpressland's `win32hle-os-layer` branch.
 
 The same tag runs `.github/workflows/flatpak.yml`: `app/linux/build-flatpak.sh`
 builds the Flatpak on x86-64 and arm64 runners (from the tagged commit's
