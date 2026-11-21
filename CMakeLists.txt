@@ -69,6 +69,20 @@ else()
   add_library(tpw_sdl INTERFACE)
   target_link_libraries(tpw_sdl INTERFACE PkgConfig::SDL2 PkgConfig::SDL2_TTF)
 endif()
+# The Vulkan renderer is compiled only if <vulkan/vulkan.h> is found.
+# We look for the headers first in the include directory of each
+# CMAKE_PREFIX_PATH entry (so for example a Vulkan-Headers checkout), and then
+# in the Vulkan SDK's include folder.
+# vulkan-1.dll is part of the graphics driver and loaded at runtime, so we don't
+# need to link anything for it.
+if(WIN32)
+  find_path(TPW_VULKAN_INCLUDE vulkan/vulkan.h PATHS ENV VULKAN_SDK PATH_SUFFIXES Include include)
+  if(NOT TPW_VULKAN_INCLUDE)
+    message(WARNING "No Vulkan headers: --renderer vulkan will fall back to software. "
+                    "Add a Vulkan-Headers directory to CMAKE_PREFIX_PATH (TPW_VULKAN_PREFIX for "
+                    "build-windows.ps1/install.py), or install the Vulkan SDK.")
+  endif()
+endif()
 set(HLE ${PCRECOMP}/runtime/win32hle)
 file(GLOB HLE_SOURCES CONFIGURE_DEPENDS "${HLE}/*.c")
 list(FILTER HLE_SOURCES EXCLUDE REGEX "_selftest\\.c$")
@@ -78,6 +92,9 @@ list(FILTER HLE_SOURCES EXCLUDE REGEX "_selftest\\.c$")
 add_library(tpw_obj OBJECT src/host/main.c src/host/cpu.c src/host/pad.c src/host/qmixer.c src/host/script.c src/host/shims.c src/host/widescreen.c ${HLE_SOURCES} ${GEN_SOURCES})
 set_target_properties(tpw_obj PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(tpw_obj PRIVATE src/host ${GEN_DIR} ${HLE} ${PCRECOMP}/runtime/recomp32)
+if(TPW_VULKAN_INCLUDE)
+  target_include_directories(tpw_obj PRIVATE ${TPW_VULKAN_INCLUDE})
+endif()
 # The lifted x87 stack's push and pop move a pointer over a ring rather than
 # all eight registers, and a function's own pushes stay in locals
 # (RECOMP_X87_RING, RECOMP_X87_LOCAL); the game's lighting and transforms are

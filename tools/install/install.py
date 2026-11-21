@@ -181,6 +181,24 @@ def sdl_prefixes(given):
     return prefixes
 
 
+def vulkan_prefix(given):
+    """The CMake prefix of the Vulkan headers for the Windows build, or None.
+
+    Given by `--vulkan-prefix` or `TPW_VULKAN_PREFIX`: a path to Vulkan-Headers,
+    which contains include/vulkan/vulkan.h.
+    It's optional. Without it, CMake still looks in the Vulkan SDK (if
+    VULKAN_SDK is set), and if that fails too, the game is built without Vulkan
+    and renders in software.
+    """
+    p = given or os.environ.get('TPW_VULKAN_PREFIX')
+    if not p:
+        return None
+    p = os.path.abspath(p)
+    if not os.path.isfile(os.path.join(p, 'include', 'vulkan', 'vulkan.h')):
+        raise Failed(f'no include/vulkan/vulkan.h in --vulkan-prefix ({p}): please provide a Vulkan-Headers folder')
+    return p
+
+
 def usable_memory():
     """The memory the system can use in bytes, or 0 if it can't be detected."""
     try:
@@ -241,6 +259,7 @@ class Install:
         self.pc_src = os.path.join(self.src, 'pcrecomp')
         self.sdl = os.path.join(self.src, 'Frameworks') if a.sdl_frameworks else None
         self.sdl_prefix = []
+        self.vulkan_prefix = None
         self.analysis = os.path.join(self.build, 'analysis')
         self.gen = os.path.join(self.build, 'gen')
         self.host = os.path.join(self.build, 'host')
@@ -280,15 +299,25 @@ class Install:
                              os.path.join(tools, 'disasm'), os.path.join(REPO, 'tools', 'gen'))
         lift = tree_hash(os.path.join(tools, 'lift'), os.path.join(REPO, 'run_lift.py'))
         sdl_cmake = []
+        vulkan_core = []
         if sys.platform == 'win32':
             try:
                 sdl_cmake = [os.path.join(p, 'lib', 'cmake') for p in sdl_prefixes(self.a.sdl_prefix)]
             except Failed:
                 pass  # check() will report this failure
+            try:
+                vk = vulkan_prefix(self.a.vulkan_prefix)
+                # vulkan_core.h contains the version, so if for instance
+                # Vulkan-Headers is switched to a different release,
+                # vulkan_core.h's fingerprint will change and the host will
+                # be rebuilt.
+                vulkan_core = [os.path.join(vk, 'include', 'vulkan', 'vulkan_core.h')] if vk else []
+            except Failed:
+                pass  # check() will report this failure
         host = tree_hash(os.path.join(REPO, 'CMakeLists.txt'), os.path.join(REPO, 'src', 'host'),
                          os.path.join(self.pcrecomp, 'runtime'),
                          *(os.path.join(self.a.sdl_frameworks, f) for f in SDL_FRAMEWORKS if self.a.sdl_frameworks),
-                         *sdl_cmake)
+                         *sdl_cmake, *vulkan_core)
         return {'data': data,
                 'analysis': f'{data}/{analysis}',
                 'lift': f'{data}/{analysis}/{lift}',
@@ -332,6 +361,9 @@ class Install:
                     raise Failed(f'no {f} in {self.a.sdl_frameworks}')
         elif sys.platform == 'win32':
             self.sdl_prefix = sdl_prefixes(self.a.sdl_prefix)
+            self.vulkan_prefix = vulkan_prefix(self.a.vulkan_prefix)
+            if not self.vulkan_prefix and not os.environ.get('VULKAN_SDK'):
+                say('no Vulkan headers (--vulkan-prefix): the game will render in software only')
         elif subprocess.run(['pkg-config', '--exists', 'sdl2', 'SDL2_ttf']).returncode:
             raise Failed('pkg-config cannot find sdl2 and SDL2_ttf (README: prerequisites)')
         os.makedirs(self.dest, exist_ok=True)
@@ -472,19 +504,19 @@ class Install:
                 '--work', self.analysis, '--out', self.gen)
 
     def compile(self):
-        # A build folder made another way (other sources, other SDL) starts again.
+        # A build folder made another way (other sources, other libraries) starts again.
         # From pkg-config, SDL's flags themselves: CMake keeps what it found
         # first, and an app update (the Flatpak's) can move them.
         extra = []
         if sys.platform == 'win32':
-            # win: pass SDL's package path & use llvm-mingw's clang rather than defaulting to MSVC
-            sdl = ';'.join(self.sdl_prefix)
-            extra = [f'-DCMAKE_C_COMPILER={os.environ.get("CC") or "clang"}', f'-DCMAKE_PREFIX_PATH={sdl}']
+            # win: pass SDL's package paths and the Vulkan headers' path, & use llvm-mingw's clang rather than defaulting to MSVC
+            libs = ';'.join(self.sdl_prefix + ([self.vulkan_prefix] if self.vulkan_prefix else []))
+            extra = [f'-DCMAKE_C_COMPILER={os.environ.get("CC") or "clang"}', f'-DCMAKE_PREFIX_PATH={libs}']
         else:
             # unix: ask pkg-config for SDL package path
-            sdl = self.sdl or subprocess.run(['pkg-config', '--cflags', '--libs', 'sdl2', 'SDL2_ttf'],
-                                             capture_output=True, text=True).stdout.strip()
-        config = [self.tpw_src, self.pc_src, sdl, self.cmake]
+            libs = self.sdl or subprocess.run(['pkg-config', '--cflags', '--libs', 'sdl2', 'SDL2_ttf'],
+                                              capture_output=True, text=True).stdout.strip()
+        config = [self.tpw_src, self.pc_src, libs, self.cmake]
         if self.state.get('host_config') != config:
             shutil.rmtree(self.host, ignore_errors=True)
         if not os.path.exists(os.path.join(self.host, 'build.ninja')):
@@ -560,6 +592,10 @@ def main():
     ap.add_argument('--sdl-prefix', action='append', metavar='DIR',
                     help='Windows: SDL2 or SDL2_ttf MinGW dev package path; '
                     'pass once per package. (default: TPW_SDL_PREFIX, ;-separated)')
+    ap.add_argument('--vulkan-prefix', metavar='DIR',
+                    help='Windows: Vulkan-Headers path, for the Vulkan renderer. Without this, either an '
+                    'installed Vulkan SDK will be used, or the game will be limited to its software renderer. '
+                    '(default: TPW_VULKAN_PREFIX)')
     ap.add_argument('--force', action='store_true', help='redo every step')
     ap.add_argument('--status', action='store_true', help='print what a run would redo, as JSON')
     ap.add_argument('--export-sources', metavar='DIR', help='copy the sources the build needs to DIR, and stop')

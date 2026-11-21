@@ -11,13 +11,17 @@
 #       i.e. when build.ninja doesn't exist yet. After that, changing these
 #       does nothing unless you also delete the build folder.
 #
-#   TPW_SDL_PREFIX  paths to SDL and SDL_ttf, separated by ';'  (required)
-#   BUILD_DIR       where to place the output                   (default: ./build-windows)
-#   PCRECOMP        where pcrecomp is checked out               (default: ../pcrecomp)
-#   CC              the C compiler                              (default: clang)
-#   CMAKE_ARGS      additional flags for cmake's configure
-#                   step, separated by spaces.
-#                   for example: -DTPW_TRACE=ON
+#   TPW_SDL_PREFIX     paths to SDL and SDL_ttf, separated by ';'  (required)
+#   TPW_VULKAN_PREFIX  path to Vulkan-Headers. Without it, we'll
+#                      try to use the Vulkan SDK. If we can't
+#                      find that, the game will be limited to the
+#                      software renderer.
+#   BUILD_DIR          where to place the output                   (default: ./build-windows)
+#   PCRECOMP           where pcrecomp is checked out               (default: ../pcrecomp)
+#   CC                 the C compiler                              (default: clang)
+#   CMAKE_ARGS         additional flags for cmake's configure
+#                      step, separated by spaces.
+#                      for example: -DTPW_TRACE=ON
 #
 # Args passed to the script itself are forwarded to `cmake --build`.
 # Note: be sure to quote '--' if passing args to ninja like this.
@@ -39,6 +43,9 @@ if (-not (Test-Path (Join-Path $buildDir 'build.ninja'))) {
         $arch = Join-Path $p 'x86_64-w64-mingw32'
         if (Test-Path $arch) { $arch } else { $p }
     })
+    # No need to try multiple paths here; only the top-level of Vulkan-Headers,
+    # the directory with include/vulkan/vulkan.h in it, is a valid prefix.
+    if ($env:TPW_VULKAN_PREFIX) { $prefixes += $env:TPW_VULKAN_PREFIX }
     $extra = @($env:CMAKE_ARGS -split ' ' | Where-Object { $_ })
     cmake -S . -B $buildDir -G Ninja "-DCMAKE_C_COMPILER=$cc" "-DPCRECOMP=$pcrecomp" "-DCMAKE_PREFIX_PATH=$($prefixes -join ';')" @extra
     if ($LASTEXITCODE) { exit $LASTEXITCODE }

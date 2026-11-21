@@ -316,9 +316,10 @@ Linux launcher (SDL, as the game is); `TPW_LAUNCHER_SHOT=FILE.bmp` with
 
 ## Building (Windows)
 
-> **Heavy WIP!**
-> The lift, compile and link work, and `tpw.exe` maps the game, but it hasn't
-> run the game yet.
+> **Work in Progress!**
+> The game builds & runs, but there is no launcher or easy download yet.
+> Currently you have to build it from source, and start it via a shortcut or
+> your terminal.
 
 The Windows build uses clang from [llvm-mingw](https://github.com/mstorsjo/llvm-mingw).
 MSVC and clang-cl are not currently supported.
@@ -343,6 +344,16 @@ MSVC and clang-cl are not currently supported.
   [libsdl-org/SDL_ttf](https://github.com/libsdl-org/SDL_ttf/releases)
   Remember to adjust the paths in the lift section below so it points to
   wherever you put these. The examples use `Z:/lib`.
+- Vulkan headers, if you want to use the GPU renderer.
+  A good option is the source of a
+  [KhronosGroup/Vulkan-Headers](https://github.com/KhronosGroup/Vulkan-Headers/tags)
+  release (the examples use `Z:/lib/Vulkan-Headers-1.4.368`).
+  The [Vulkan SDK](https://vulkan.lunarg.com/) works too, and will be picked up
+  automatically if installed and no Vulkan options are set as part of the build.
+  Without Vulkan, the game will still build and run, but you'll be limited to
+  the software renderer.
+  Your graphics driver needs to come with Vulkan 1.3, which it probably does if
+  your GPU is from the past few years.
 - pcrecomp next to this repo, on the Vulkan branch, same as macOS:
   ([pending merges](#pcrecomp-pending-merges)).
 
@@ -362,13 +373,17 @@ place of `.venv/bin/python` and `python3`, and step 2's last line as:
 cp -r work/v20 game && cp work/unwrap/TP.EXE game/TP.EXE && rm game/TP.ICD
 ```
 
-Now build with `build-windows.ps1`. Set `TPW_SDL_PREFIX` to your SDL2 and SDL2_ttf package paths:
+Now build with `build-windows.ps1`. Set `TPW_SDL_PREFIX` to your SDL2 and SDL2_ttf package paths,
+and `TPW_VULKAN_PREFIX` to your Vulkan-Headers folder:
 
 ```
 $env:TPW_SDL_PREFIX = 'Z:/lib/SDL2-2.32.10;Z:/lib/SDL2_ttf-2.24.0'
+$env:TPW_VULKAN_PREFIX = 'Z:/lib/Vulkan-Headers-1.4.368'
 .\build-windows.ps1
 build-windows\tpw.exe --game game --run
 ```
+
+Note: You can leave `TPW_VULKAN_PREFIX` unset if you wish to use your installed Vulkan SDK instead.
 
 This builds `build-windows\tpw.exe` and `tpw.dll`.
 
@@ -379,14 +394,18 @@ Check the script's header to see its other settings such as `BUILD_DIR` and `PCR
 `tools/install/install.py` can do the whole setup for you, downloading &
 compiling as in [In one command](#in-one-command).
 
-You will need to provide the paths to your SDL2 and SDL2_ttf packages as follows:
+You will need to provide the paths to your SDL2 and SDL2_ttf packages and your Vulkan headers as follows:
 
 ```
 uv run python -I tools/install/install.py --download @(
     '--sdl-prefix'; 'Z:/lib/SDL2-2.32.10'
     '--sdl-prefix'; 'Z:/lib/SDL2_ttf-2.24.0'
+    '--vulkan-prefix'; 'Z:/lib/Vulkan-Headers-1.4.368'
 )
 ```
+
+Note: As in the manual steps, you can leave out `--vulkan-prefix` if you wish to
+use your installed Vulkan SDK instead.
 
 Working directory defaults to `%localappdata%/Theme Park World`. Use `--dest` to change it.
 
