@@ -99,7 +99,12 @@ def main():
         payload = extract(a.patch_zip, work)
         dll = applier(payload, work)
         # A copy to patch: APFS clones it instantly where it can.
-        subprocess.run(['cp', '-Rc', a.disc, a.out], check=False)
+        try:
+            subprocess.run(['cp', '-Rc', a.disc, a.out], check=False)
+        except FileNotFoundError:
+            # if this fails for any reason, we can ignore it.
+            # it gets copied below anyway.
+            pass
         if not os.path.exists(a.out):
             shutil.copytree(a.disc, a.out)
         failed = 0

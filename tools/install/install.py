@@ -58,6 +58,10 @@ DATA_VERSION = 1
 if sys.platform == 'darwin':
     DEFAULT_DEST = os.path.expanduser('~/Library/Application Support/Theme Park World')
     LIBRARY = 'libtpw.dylib'
+elif sys.platform == 'win32':
+    DEFAULT_DEST = os.path.join(os.environ.get('LOCALAPPDATA') or os.path.expanduser(r'~\AppData\Local'),
+                                'Theme Park World')
+    LIBRARY = 'tpw.dll'
 else:
     DEFAULT_DEST = os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share'),
                                 'theme-park-world')
@@ -76,6 +80,9 @@ DOWNLOADS = (('disc image', 'theme_park_world.iso', ISO_MD5, 'iso'),
 SOURCES = {'tpw': ('CMakeLists.txt', 'run_lift.py', 'src/host', 'tools'),
            'pcrecomp': ('runtime', 'tools', 'LICENSE')}
 SDL_FRAMEWORKS = ('SDL2.framework', 'SDL2_ttf.framework')
+# win: SDL's MinGW dev packages
+SDL_PACKAGES = ('SDL2', 'SDL2_ttf')
+MINGW_ARCH = 'x86_64-w64-mingw32'
 
 
 class Failed(Exception):
@@ -148,6 +155,51 @@ def find_pcrecomp(given):
     raise Failed('no pcrecomp found: give --pcrecomp, or clone it beside this repository (README)')
 
 
+def sdl_prefixes(given):
+    """CMake prefixes of SDL's MinGW dev packages.
+
+    Needed for the Windows build.
+
+    Provided prefixes either via `--sdl-prefix` or `TPW_SDL_PREFIX` (;-separated.)
+
+    This function will work with both the top-level package directory or its
+    `x86_64-w64-mingw32` sub-directory.
+    """
+    paths = list(given or ()) or [p for p in os.environ.get('TPW_SDL_PREFIX', '').split(os.pathsep) if p]
+    if not paths:
+        raise Failed('no SDL: give --sdl-prefix for both SDL2 and SDL2_ttf. See readme section: Building (Windows)')
+
+    prefixes = []
+    for p in paths:
+        p = os.path.abspath(p)
+        prefixes.append(os.path.join(p, MINGW_ARCH) if os.path.isdir(os.path.join(p, MINGW_ARCH)) else p)
+
+    for pkg in SDL_PACKAGES:
+        if not any(os.path.isdir(os.path.join(p, 'lib', 'cmake', pkg)) for p in prefixes):
+            raise Failed(f'no {pkg} in --sdl-prefix ({"; ".join(prefixes)}): give its MinGW development package')
+
+    return prefixes
+
+
+def usable_memory():
+    """The memory the system can use in bytes, or 0 if it can't be detected."""
+    try:
+        if sys.platform == 'win32':
+            # win: fetch from kernel
+            import ctypes
+
+            class MemoryStatus(ctypes.Structure):
+                _fields_ = [('dwLength', ctypes.c_uint32), ('dwMemoryLoad', ctypes.c_uint32),
+                            ('ullTotalPhys', ctypes.c_uint64), ('padding', ctypes.c_uint64 * 6)]
+            ms = MemoryStatus(dwLength=ctypes.sizeof(MemoryStatus))
+            return ms.ullTotalPhys if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(ms)) else 0
+        else:
+            # unix: fetch via sysconf
+            return os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')
+    except (ValueError, OSError, AttributeError):
+        return 0
+
+
 def build_jobs():
     """How many compilers at once: one a core, but no more than the memory
     holds, as gcc takes up to 1.5 GB on the largest lifted files (a Steam
@@ -155,10 +207,7 @@ def build_jobs():
     own = os.environ.get('TPW_JOBS')
     if own and own.isdigit() and int(own) > 0:
         return int(own)
-    try:
-        mem = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')
-    except (ValueError, OSError):
-        mem = 0
+    mem = usable_memory()
     cpus = os.cpu_count() or 1
     return max(1, min(cpus, mem // (2 << 30))) if mem else cpus
 
@@ -174,7 +223,7 @@ def find_tools():
             cm = os.path.join(cmake.CMAKE_BIN_DIR, 'cmake')
         except ImportError:
             cm = shutil.which('cmake')
-    nj = os.path.join(os.path.dirname(sys.executable), 'ninja')
+    nj = os.path.join(os.path.dirname(sys.executable), 'ninja.exe' if sys.platform == 'win32' else 'ninja')
     if not os.access(nj, os.X_OK):
         nj = shutil.which('ninja')
     return cm, nj
@@ -191,6 +240,7 @@ class Install:
         self.tpw_src = os.path.join(self.src, 'tpw')
         self.pc_src = os.path.join(self.src, 'pcrecomp')
         self.sdl = os.path.join(self.src, 'Frameworks') if a.sdl_frameworks else None
+        self.sdl_prefix = []
         self.analysis = os.path.join(self.build, 'analysis')
         self.gen = os.path.join(self.build, 'gen')
         self.host = os.path.join(self.build, 'host')
@@ -229,9 +279,16 @@ class Install:
         analysis = tree_hash(os.path.join(tools, 'pe'), os.path.join(tools, 'cpp'),
                              os.path.join(tools, 'disasm'), os.path.join(REPO, 'tools', 'gen'))
         lift = tree_hash(os.path.join(tools, 'lift'), os.path.join(REPO, 'run_lift.py'))
+        sdl_cmake = []
+        if sys.platform == 'win32':
+            try:
+                sdl_cmake = [os.path.join(p, 'lib', 'cmake') for p in sdl_prefixes(self.a.sdl_prefix)]
+            except Failed:
+                pass  # check() will report this failure
         host = tree_hash(os.path.join(REPO, 'CMakeLists.txt'), os.path.join(REPO, 'src', 'host'),
                          os.path.join(self.pcrecomp, 'runtime'),
-                         *(os.path.join(self.a.sdl_frameworks, f) for f in SDL_FRAMEWORKS if self.a.sdl_frameworks))
+                         *(os.path.join(self.a.sdl_frameworks, f) for f in SDL_FRAMEWORKS if self.a.sdl_frameworks),
+                         *sdl_cmake)
         return {'data': data,
                 'analysis': f'{data}/{analysis}',
                 'lift': f'{data}/{analysis}/{lift}',
@@ -261,6 +318,9 @@ class Install:
         if sys.platform == 'darwin':
             if subprocess.run(['xcrun', '--find', 'clang'], capture_output=True).returncode:
                 raise Failed("no C compiler: install Xcode's command line tools (xcode-select --install)")
+        elif sys.platform == 'win32':
+            if not (os.environ.get('CC') or shutil.which('clang')):
+                raise Failed('no C compiler: install llvm-mingw (winget install -e MartinStorsjo.LLVM-MinGW.UCRT)')
         elif not (os.environ.get('CC') or shutil.which('cc') or shutil.which('clang') or shutil.which('gcc')):
             raise Failed('no C compiler: install clang (or gcc), e.g. the build-essential package')
         self.cmake, self.ninja = find_tools()
@@ -270,6 +330,8 @@ class Install:
             for f in SDL_FRAMEWORKS:
                 if not os.path.isdir(os.path.join(self.a.sdl_frameworks, f)):
                     raise Failed(f'no {f} in {self.a.sdl_frameworks}')
+        elif sys.platform == 'win32':
+            self.sdl_prefix = sdl_prefixes(self.a.sdl_prefix)
         elif subprocess.run(['pkg-config', '--exists', 'sdl2', 'SDL2_ttf']).returncode:
             raise Failed('pkg-config cannot find sdl2 and SDL2_ttf (README: prerequisites)')
         os.makedirs(self.dest, exist_ok=True)
@@ -413,15 +475,22 @@ class Install:
         # A build folder made another way (other sources, other SDL) starts again.
         # From pkg-config, SDL's flags themselves: CMake keeps what it found
         # first, and an app update (the Flatpak's) can move them.
-        sdl = self.sdl or subprocess.run(['pkg-config', '--cflags', '--libs', 'sdl2', 'SDL2_ttf'],
-                                         capture_output=True, text=True).stdout.strip()
+        extra = []
+        if sys.platform == 'win32':
+            # win: pass SDL's package path & use llvm-mingw's clang rather than defaulting to MSVC
+            sdl = ';'.join(self.sdl_prefix)
+            extra = [f'-DCMAKE_C_COMPILER={os.environ.get("CC") or "clang"}', f'-DCMAKE_PREFIX_PATH={sdl}']
+        else:
+            # unix: ask pkg-config for SDL package path
+            sdl = self.sdl or subprocess.run(['pkg-config', '--cflags', '--libs', 'sdl2', 'SDL2_ttf'],
+                                             capture_output=True, text=True).stdout.strip()
         config = [self.tpw_src, self.pc_src, sdl, self.cmake]
         if self.state.get('host_config') != config:
             shutil.rmtree(self.host, ignore_errors=True)
         if not os.path.exists(os.path.join(self.host, 'build.ninja')):
             self.run(self.cmake, '-S', self.tpw_src, '-B', self.host, '-G', 'Ninja',
                      f'-DCMAKE_MAKE_PROGRAM={self.ninja}', f'-DPCRECOMP={self.pc_src}', f'-DGEN_DIR={self.gen}',
-                     f'-DTPW_SDL_FRAMEWORKS={self.sdl or ""}')
+                     f'-DTPW_SDL_FRAMEWORKS={self.sdl or ""}', *extra)
             self.state['host_config'] = config
             self.save_state()
         say('compiling (a few minutes the first time)...')
@@ -462,7 +531,7 @@ class Install:
                 self.save_state()
             say(f'    {title.lower()}: {time.time() - t:.0f} s')
         say('@done')
-        tpw = os.path.join(self.host, 'tpw')
+        tpw = os.path.join(self.host, 'tpw.exe' if sys.platform == 'win32' else 'tpw')
         say('done. Play with Theme Park World.app (app/build-app.sh), or from a terminal:' if sys.platform == 'darwin'
             else 'done. Play from a terminal:')
         say(f'  "{tpw}" --game "{self.game}" --run --resolution native')
@@ -476,7 +545,7 @@ def export(out, pcrecomp):
 
 
 def main():
-    if os.environ.get('TPW_PGROUP'):
+    if os.environ.get('TPW_PGROUP') and hasattr(os, 'setpgrp'):
         os.setpgrp()       # the app stops the whole build (compilers too) through the group
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0],
                                  formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
@@ -488,6 +557,9 @@ def main():
     ap.add_argument('--pcrecomp', help='the pcrecomp checkout (default: ./pcrecomp, then ../pcrecomp)')
     ap.add_argument('--sdl-frameworks', help='a folder with SDL2.framework and SDL2_ttf.framework '
                     '(default: SDL from pkg-config)')
+    ap.add_argument('--sdl-prefix', action='append', metavar='DIR',
+                    help='Windows: SDL2 or SDL2_ttf MinGW dev package path; '
+                    'pass once per package. (default: TPW_SDL_PREFIX, ;-separated)')
     ap.add_argument('--force', action='store_true', help='redo every step')
     ap.add_argument('--status', action='store_true', help='print what a run would redo, as JSON')
     ap.add_argument('--export-sources', metavar='DIR', help='copy the sources the build needs to DIR, and stop')

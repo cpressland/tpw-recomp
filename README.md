@@ -314,6 +314,80 @@ Linux launcher (SDL, as the game is); `TPW_LAUNCHER_SHOT=FILE.bmp` with
    display), and the time between is idle: `HLE_MAX_FPS=0` lifts the cap.
    On an M1 Pro a park takes about 40% of one core, down from 120%.
 
+## Building (Windows)
+
+> **Heavy WIP!**
+> Lift & compilation works, but that's it. No working build yet!
+
+The Windows build uses clang from [llvm-mingw](https://github.com/mstorsjo/llvm-mingw).
+MSVC and clang-cl are not currently supported.
+
+### Prerequisites
+
+- CMake 3.20+, Git, uv, LLVM MinGW clang, Ninja
+  If using winget:
+  ```
+  winget install @(
+      'Kitware.CMake'
+      'Git.Git'
+      'astral-sh.uv'
+      'MartinStorsjo.LLVM-MinGW.UCRT'
+      'Ninja-build.Ninja'
+  )
+  ```
+- SDL2 and SDL2_ttf MinGW development packages
+  - `SDL2-devel-2.32.10-mingw.zip` from
+    [libsdl-org/SDL](https://github.com/libsdl-org/SDL/releases)
+  - `SDL2_ttf-devel-2.24.0-mingw.zip` from
+  [libsdl-org/SDL_ttf](https://github.com/libsdl-org/SDL_ttf/releases)
+  Remember to adjust the paths in the lift section below so it points to
+  wherever you put these. The examples use `Z:/lib`.
+- pcrecomp next to this repo, on the Vulkan branch, same as macOS:
+  ([pending merges](#pcrecomp-pending-merges)).
+
+### lift
+
+```
+uv venv .venv
+uv pip install pefile capstone unicorn
+```
+
+#### Manual method
+
+Follow [Step by step](#step-by-step) 2 to 5 with `uv run python` in
+place of `.venv/bin/python` and `python3`, and step 2's last line as:
+
+```
+cp -r work/v20 game && cp work/unwrap/TP.EXE game/TP.EXE && rm game/TP.ICD
+```
+
+Now configure & build with cmake. Replace the paths in `CMAKE_PREFIX_PATH` with your SDL2 and SDL2_ttf packages:
+
+```
+cmake -S . -B build-windows -G Ninja @(
+    '-DCMAKE_C_COMPILER=clang'
+    '-DPCRECOMP=../pcrecomp'
+    '-DCMAKE_PREFIX_PATH=Z:/lib/SDL2-2.32.10/x86_64-w64-mingw32;Z:/lib/SDL2_ttf-2.24.0/x86_64-w64-mingw32'
+)
+cmake --build build-windows
+```
+
+#### Automatic method
+
+`tools/install/install.py` can do the whole setup for you, downloading &
+compiling as in [In one command](#in-one-command).
+
+You will need to provide the paths to your SDL2 and SDL2_ttf packages as follows:
+
+```
+uv run python -I tools/install/install.py --download @(
+    '--sdl-prefix'; 'Z:/lib/SDL2-2.32.10'
+    '--sdl-prefix'; 'Z:/lib/SDL2_ttf-2.24.0'
+)
+```
+
+Working directory defaults to `%localappdata%/Theme Park World`. Use `--dest` to change it.
+
 ## License
 
 MIT for this repository's own code. Theme Park World is © Electronic Arts;
