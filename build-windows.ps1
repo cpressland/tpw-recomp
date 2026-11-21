@@ -9,7 +9,7 @@
 # ---- settings ----
 # Note: All of these except for BUILD_DIR only apply to the first configure,
 #       i.e. when build.ninja doesn't exist yet. After that, changing these
-#       does nothing unless you also delete the build folder.
+#       does nothing unless you also delete the build directory.
 #
 #   TPW_SDL_PREFIX     paths to SDL and SDL_ttf, separated by ';'  (required)
 #   TPW_VULKAN_PREFIX  path to Vulkan-Headers. Without it, we'll
@@ -35,7 +35,7 @@ $cc = if ($env:CC) { $env:CC } else { 'clang' }
 
 if (-not (Test-Path (Join-Path $buildDir 'build.ninja'))) {
     if (-not $env:TPW_SDL_PREFIX) {
-        throw 'Set TPW_SDL_PREFIX to the SDL2 and SDL2_ttf MinGW package folders, separated by ";" (README: Building (Windows)).'
+        throw 'Set TPW_SDL_PREFIX to the SDL2 and SDL2_ttf MinGW package directories, separated by ";" (README: Building (Windows)).'
     }
     # CMake wants the package's "x86_64-w64-mingw32" directory, which contains lib\cmake.
     # The user can pass the top-level path instead, so we need to try both options here.

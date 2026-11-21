@@ -1,6 +1,9 @@
-/* Theme Park World's launcher on Linux: what Theme Park World.app is on a Mac
- * (app/Launcher), drawn with SDL so it works as well with a controller in a
- * Steam Deck's Game Mode as with a mouse on a desktop.
+/* Theme Park World's launcher on Linux and Windows: what Theme Park World.app
+ * is on a Mac (app/Launcher), drawn with SDL so it works as well with a
+ * controller in a Steam Deck's Game Mode as with a mouse on a desktop.
+ *
+ * launcher_os.h provides functions to smooth over OS differences between Linux
+ * and Windows.
  *
  * Play when the game is built; otherwise build it (tools/install/install.py,
  * which downloads the disc image and the 2.0 patch the first time), showing
@@ -8,31 +11,30 @@
  * and ninja's `[n/m]` for the compile. The game runs as a child; the window
  * hides meanwhile, and comes back only if the game crashed.
  *
- *   cc -O2 launcher.c $(pkg-config --cflags --libs sdl2 SDL2_ttf) -o theme-park-world
+ *   cc -O2 launcher.c launcher_os_posix.c $(pkg-config --cflags --libs sdl2 SDL2_ttf) -o theme-park-world
+ *   (Windows: app/windows/build-launcher.ps1)
  *
- * Where things are (the Flatpak's layout by default):
+ * Where things are (defaults from os_default_paths: on Linux the Flatpak's
+ * layout, on Windows the launcher's directory and %LOCALAPPDATA%):
  *   TPW_SHARE   the sources the build needs, as install.py --export-sources
  *               writes them, under src/ (default /app/share/theme-park-world)
  *   TPW_PYTHON  a Python with pefile, capstone and unicorn (default
  *               /app/venv/bin/python3)
  *   TPW_HOME    the game, its build and logs ($XDG_DATA_HOME/theme-park-world)
  */
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
+#ifdef _WIN32
+#define SDL_MAIN_HANDLED /* we have our own main, don't want SDL2main's WinMain */
+#else
+#include <signal.h>
 #endif
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <unistd.h>
+
+#include "launcher_os.h"
 
 #ifndef TPW_VERSION
 #define TPW_VERSION ""
@@ -52,27 +54,12 @@ static const char *env_or(const char *name, const char *dflt) {
 }
 
 static void paths(void) {
-    snprintf(g_share, sizeof g_share, "%s", env_or("TPW_SHARE", "/app/share/theme-park-world"));
-    snprintf(g_python, sizeof g_python, "%s", env_or("TPW_PYTHON", "/app/venv/bin/python3"));
-    const char *home = getenv("TPW_HOME");
-    if (home && *home) {
-        snprintf(g_home, sizeof g_home, "%s", home);
-    } else {
-        const char *xdg = getenv("XDG_DATA_HOME");
-        if (xdg && *xdg) snprintf(g_home, sizeof g_home, "%s/theme-park-world", xdg);
-        else snprintf(g_home, sizeof g_home, "%s/.local/share/theme-park-world", env_or("HOME", "."));
-    }
+    char share[1024], python[1024], home[1024];
+    os_default_paths(share, python, home, sizeof share);
+    snprintf(g_share, sizeof g_share, "%s", env_or("TPW_SHARE", share));
+    snprintf(g_python, sizeof g_python, "%s", env_or("TPW_PYTHON", python));
+    snprintf(g_home, sizeof g_home, "%s", env_or("TPW_HOME", home));
     snprintf(g_logs, sizeof g_logs, "%s/logs", g_home);
-}
-
-static int exists(const char *p) { struct stat st; return stat(p, &st) == 0; }
-
-static void mkdirs(const char *path) {
-    char p[1024];
-    snprintf(p, sizeof p, "%s", path);
-    for (char *s = p + 1; *s; s++)
-        if (*s == '/') { *s = 0; mkdir(p, 0755); *s = '/'; }
-    mkdir(p, 0755);
 }
 
 /* ---- the installer ------------------------------------------------------- */
@@ -87,13 +74,12 @@ static struct {
     double fraction;            /* < 0: no measure of this step */
     char last[256];             /* the last plain output line */
     Uint32 started;
-    pid_t pid;                  /* the installer, while WORKING */
-    int fd;
+    os_proc *proc;              /* the installer, while WORKING */
     char pending[8192];
     size_t npending;
     FILE *log;
     int cancelled, needs_disc;
-} S = { .phase = CHECKING, .fraction = -1, .fd = -1 };
+} S = { .phase = CHECKING, .fraction = -1 };
 
 static void install_argv(const char **argv, int *n, const char *extra) {
     static char installer[1200], pcrecomp[1200];
@@ -114,27 +100,16 @@ static void install_argv(const char **argv, int *n, const char *extra) {
 /* install.py --status: ready, or what a build would need. */
 static void check_status(void) {
     const char *argv[12];
-    int n, fds[2];
+    int n;
     install_argv(argv, &n, "--status");
-    if (pipe(fds) != 0) goto fail;
-    pid_t pid = fork();
-    if (pid == 0) {
-        dup2(fds[1], 1);
-        int null = open("/dev/null", O_WRONLY);
-        if (null >= 0) dup2(null, 2);
-        close(fds[0]);
-        execv(argv[0], (char **)argv);
-        _exit(127);
-    }
-    close(fds[1]);
+    os_proc *p = os_spawn(argv, OS_OUT_PIPE_QUIET, NULL, NULL, 0);
+    if (!p) goto fail;
     char out[4096] = {0};
     size_t got = 0;
-    ssize_t r;
-    while (pid > 0 && got < sizeof out - 1 && (r = read(fds[0], out + got, sizeof out - 1 - got)) > 0) got += (size_t)r;
-    close(fds[0]);
-    int status = 0;
-    if (pid > 0) waitpid(pid, &status, 0);
-    if (pid <= 0 || !WIFEXITED(status) || WEXITSTATUS(status) != 0) goto fail;
+    long r;
+    while (got < sizeof out - 1 && (r = os_read(p, out + got, sizeof out - 1 - got, 1)) > 0) got += (size_t)r;
+    os_status st = os_wait(p);
+    if (!st.exited || st.code != 0) goto fail;
     char *line = strrchr(out, '{');          /* the last line is the JSON */
     if (!line) goto fail;
     if (strstr(line, "\"ready\": true")) { S.phase = READY; return; }
@@ -148,29 +123,19 @@ fail:
 
 static void start_build(void) {
     const char *argv[12];
-    int n, fds[2];
+    int n;
     install_argv(argv, &n, "--download");
-    mkdirs(g_logs);
+    os_mkdirs(g_logs);
     char logpath[1200];
     snprintf(logpath, sizeof logpath, "%s/install.log", g_logs);
     if (S.log) fclose(S.log);
-    S.log = fopen(logpath, "w");
-    if (pipe(fds) != 0) { S.phase = FAILED; snprintf(S.message, sizeof S.message, "The build could not start."); return; }
-    pid_t pid = fork();
-    if (pid == 0) {
-        dup2(fds[1], 1);
-        dup2(fds[1], 2);
-        close(fds[0]);
-        setenv("TPW_PGROUP", "1", 1);         /* its own process group: Cancel stops the compilers too */
-        setenv("PYTHONUNBUFFERED", "1", 1);
-        execv(argv[0], (char **)argv);
-        fprintf(stderr, "@error cannot run %s: %s\n", argv[0], strerror(errno));
-        _exit(127);
-    }
-    close(fds[1]);
-    if (pid < 0) { close(fds[0]); S.phase = FAILED; snprintf(S.message, sizeof S.message, "The build could not start."); return; }
-    fcntl(fds[0], F_SETFL, O_NONBLOCK);
-    S.pid = pid, S.fd = fds[0], S.npending = 0;
+    /* Opened in binary mode so as to write the installer's output verbatim,
+     * with no line-ending transformations et cetera. */
+    S.log = os_fopen(logpath, "wb");
+    static const char *const env[] = { "PYTHONUNBUFFERED=1", NULL };
+    S.proc = os_spawn(argv, OS_OUT_PIPE, NULL, env, 1);
+    if (!S.proc) { S.phase = FAILED; snprintf(S.message, sizeof S.message, "The build could not start."); return; }
+    S.npending = 0;
     S.phase = WORKING, S.cancelled = 0;
     S.step[0] = S.last[0] = 0;
     snprintf(S.step, sizeof S.step, "Starting");
@@ -201,12 +166,12 @@ static void take(char *line) {
 }
 
 static void pump_build(void) {
-    if (S.fd < 0) return;
+    if (!S.proc) return;
     char buf[4096];
-    ssize_t r;
-    while ((r = read(S.fd, buf, sizeof buf)) > 0) {
+    long r;
+    while ((r = os_read(S.proc, buf, sizeof buf, 0)) > 0) {
         if (S.log) fwrite(buf, 1, (size_t)r, S.log), fflush(S.log);
-        for (ssize_t i = 0; i < r; i++) {
+        for (long i = 0; i < r; i++) {
             if (buf[i] == '\n' || S.npending == sizeof S.pending - 1) {
                 S.pending[S.npending] = 0;
                 take(S.pending);
@@ -217,26 +182,24 @@ static void pump_build(void) {
         }
     }
     if (r == 0) {                                  /* the installer has finished */
-        close(S.fd);
-        S.fd = -1;
-        int status = 0;
-        waitpid(S.pid, &status, 0);
-        S.pid = 0;
+        os_status st = os_wait(S.proc);
+        S.proc = NULL;
         if (S.log) fclose(S.log), S.log = NULL;
         if (S.cancelled) {
             S.phase = S.needs_disc ? SETUP : UPDATE;
-        } else if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+        } else if (st.exited && st.code == 0) {
             S.phase = READY, S.needs_disc = 0;
         } else if (S.phase != FAILED) {
+            char how[64];
+            os_describe(st, how, sizeof how);
             S.phase = FAILED;
-            snprintf(S.message, sizeof S.message, "The build stopped (%s %d). Its log has the details.",
-                     WIFEXITED(status) ? "exit" : "signal", WIFEXITED(status) ? WEXITSTATUS(status) : WTERMSIG(status));
+            snprintf(S.message, sizeof S.message, "The build stopped (%s). Its log has the details.", how);
         }
     }
 }
 
 static void cancel_build(void) {
-    if (S.pid > 0) { S.cancelled = 1; kill(-S.pid, SIGTERM); }
+    if (S.proc) { S.cancelled = 1; os_cancel(S.proc); }
 }
 
 /* ---- the game ---------------------------------------------------------------- */
@@ -244,22 +207,22 @@ static void cancel_build(void) {
 /* Runs the game and waits. 1: it crashed (the window comes back to say so). */
 static int play(SDL_Window *win, int argc, char **argv) {
     char tpw[1200], game[1200], first[1200], logpath[1200], old[1200];
-    snprintf(tpw, sizeof tpw, "%s/build/host/tpw", g_home);
+    snprintf(tpw, sizeof tpw, "%s/%s", g_home, OS_TPW_EXE);
     snprintf(game, sizeof game, "%s/game", g_home);
     snprintf(first, sizeof first, "%s/.launched", g_home);
-    mkdirs(g_logs);
+    os_mkdirs(g_logs);
     snprintf(logpath, sizeof logpath, "%s/tpw.log", g_logs);
     snprintf(old, sizeof old, "%s/tpw.1.log", g_logs);
-    rename(logpath, old);
+    os_rename(logpath, old);
 
     const char *args[64];
     int n = 0;
     args[n++] = tpw, args[n++] = "--game", args[n++] = game, args[n++] = "--run";
     /* The first time, the desktop's own size; after that the game remembers
      * whatever was chosen (Data\Resolution.sam). */
-    if (!exists(first)) {
+    if (!os_exists(first)) {
         args[n++] = "--resolution", args[n++] = "native";
-        FILE *f = fopen(first, "w");
+        FILE *f = os_fopen(first, "w");
         if (f) fclose(f);
     }
     for (int i = 1; i < argc && n < 63; i++) args[n++] = argv[i];
@@ -267,21 +230,14 @@ static int play(SDL_Window *win, int argc, char **argv) {
 
     SDL_HideWindow(win);
     SDL_PumpEvents();
-    pid_t pid = fork();
-    if (pid == 0) {
-        if (!isatty(2)) {
-            int fd = open(logpath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-            if (fd >= 0) dup2(fd, 1), dup2(fd, 2);
-        }
-        execv(tpw, (char **)args);
-        fprintf(stderr, "cannot run %s: %s\n", tpw, strerror(errno));
-        _exit(127);
-    }
-    int status = 0;
-    if (pid > 0) while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
-    if (pid > 0 && WIFEXITED(status) && WEXITSTATUS(status) != GAME_CRASHED && WEXITSTATUS(status) != 127) return 0;
+    os_proc *p = os_spawn(args, OS_OUT_LOG, logpath, NULL, 0);
+    os_status st = { 0, 0 };
+    if (p) st = os_wait(p);
+    /* 127 on Linux means the child couldn't run the game, os_spawn's exec failed. */
+    int not_started = !p || (st.exited && st.code == 127);
+    if (!not_started && st.exited && st.code != GAME_CRASHED) return 0;
     S.phase = CRASHED;
-    snprintf(S.message, sizeof S.message, "%s", pid < 0 || (WIFEXITED(status) && WEXITSTATUS(status) == 127)
+    snprintf(S.message, sizeof S.message, "%s", not_started
              ? "The game could not start." : "The game stopped unexpectedly.");
     SDL_ShowWindow(win);
     SDL_RaiseWindow(win);
@@ -304,7 +260,16 @@ static TTF_Font *font(int bold, int size) {
         TTF_Font *f = TTF_OpenFont(p, size);
         if (f) return f;
     }
+#ifdef _WIN32
+    /* On Windows we'll only have found DejaVu if the user has it installed.
+     * If they don't we can fall back to Segoe UI, which has been shipped with
+     * every version since Vista. */
+    const char *windir = env_or("WINDIR", "C:\\Windows");
+    snprintf(p, sizeof p, "%s\\Fonts\\%s", windir, bold ? "segoeuib.ttf" : "segoeui.ttf");
+    return TTF_OpenFont(p, size);
+#else
     return NULL;
+#endif
 }
 
 static void text(TTF_Font *f, int x, int y, int wrap, SDL_Color c, const char *fmt, ...) {
@@ -462,7 +427,7 @@ static int act(enum action a, int argc, char **argv) {
         break;
     case A_BUILD:
     case A_RETRY:
-        if (S.phase == FAILED && !exists(g_home)) S.needs_disc = 1;
+        if (S.phase == FAILED && !os_exists(g_home)) S.needs_disc = 1;
         start_build();
         break;
     case A_CANCEL: cancel_build(); break;
@@ -507,7 +472,11 @@ static int shot(const char *path) {
 
 int main(int argc, char **argv) {
     paths();
+#ifdef _WIN32
+    SDL_SetMainReady();
+#else
     signal(SIGPIPE, SIG_IGN);
+#endif
     SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) != 0 || TTF_Init() != 0) {
         fprintf(stderr, "launcher: %s\n", SDL_GetError());
@@ -522,7 +491,11 @@ int main(int argc, char **argv) {
     SDL_RenderSetLogicalSize(R, W, H);
     SDL_SetRenderDrawBlendMode(R, SDL_BLENDMODE_BLEND);
     F_TITLE = font(1, 40), F_BODY = font(0, 24), F_SMALL = font(0, 16), F_BUTTON = font(1, 24);
-    if (!F_BODY) fprintf(stderr, "launcher: no DejaVu Sans font found; text will be missing\n");
+#ifdef _WIN32
+    if (!F_BODY) fprintf(stderr, "launcher: no font found (DejaVu Sans or Segoe UI); text will be missing\n");
+#else
+    if (!F_BODY) fprintf(stderr, "launcher: no font found (DejaVu Sans); text will be missing\n");
+#endif
     if (shot_path) return shot(shot_path);
 
     draw();
@@ -581,7 +554,7 @@ int main(int argc, char **argv) {
         draw();
         SDL_RenderPresent(R);
     }
-    if (S.pid > 0) { int st; waitpid(S.pid, &st, 0); }
+    if (S.proc) os_wait(S.proc);
     TTF_Quit();
     SDL_Quit();
     return 0;

@@ -89,7 +89,7 @@ modules:
     buildsystem: simple
     build-commands:
       - python3 -I tools/install/install.py --export-sources /app/share/theme-park-world/src --pcrecomp pcrecomp
-      - gcc -O2 -Wall -DTPW_VERSION='"@VERSION@"' app/linux/launcher.c
+      - gcc -O2 -Wall -DTPW_VERSION='"@VERSION@"' app/sdl-launcher/launcher.c app/sdl-launcher/launcher_os_posix.c
           $(pkg-config --cflags --libs sdl2 SDL2_ttf) -o theme-park-world
       - install -Dm755 theme-park-world -t /app/bin
       - install -Dm644 app/linux/io.cpressland.ThemeParkWorld.desktop -t /app/share/applications

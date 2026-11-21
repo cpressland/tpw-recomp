@@ -195,7 +195,7 @@ def vulkan_prefix(given):
         return None
     p = os.path.abspath(p)
     if not os.path.isfile(os.path.join(p, 'include', 'vulkan', 'vulkan.h')):
-        raise Failed(f'no include/vulkan/vulkan.h in --vulkan-prefix ({p}): please provide a Vulkan-Headers folder')
+        raise Failed(f'no include/vulkan/vulkan.h in --vulkan-prefix ({p}): please provide a Vulkan-Headers directory')
     return p
 
 

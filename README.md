@@ -237,7 +237,7 @@ checked-in files and pcrecomp at the lock) and attaches them to the
 `flatpak` release. [cpressland/flatpak](https://github.com/cpressland/flatpak)
 signs and publishes them at `flatpak.cpressland.io`, which holds the latest
 build only; the `FLATPAK_HUB_TOKEN` secret lets this workflow start that at
-once (otherwise it runs each day). `app/linux/launcher.c` is the
+once (otherwise it runs each day). `app/sdl-launcher/launcher.c` is the
 Linux launcher (SDL, as the game is); `TPW_LAUNCHER_SHOT=FILE.bmp` with
 `TPW_LAUNCHER_STATE=setup|working|ready|failed|crashed` draws one screen.
 
@@ -374,7 +374,7 @@ cp -r work/v20 game && cp work/unwrap/TP.EXE game/TP.EXE && rm game/TP.ICD
 ```
 
 Now build with `build-windows.ps1`. Set `TPW_SDL_PREFIX` to your SDL2 and SDL2_ttf package paths,
-and `TPW_VULKAN_PREFIX` to your Vulkan-Headers folder:
+and `TPW_VULKAN_PREFIX` to your Vulkan-Headers directory:
 
 ```
 $env:TPW_SDL_PREFIX = 'Z:/lib/SDL2-2.32.10;Z:/lib/SDL2_ttf-2.24.0'

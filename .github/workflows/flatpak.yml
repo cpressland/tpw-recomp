@@ -14,7 +14,7 @@ on:
     tags: ["v*"]
   workflow_dispatch:
   pull_request:                # the builds only, not the publish
-    paths: ["app/linux/**", "tools/install/**", ".github/workflows/flatpak.yml"]
+    paths: ["app/linux/**", "app/sdl-launcher/**", "tools/install/**", ".github/workflows/flatpak.yml"]
 
 permissions:
   contents: read

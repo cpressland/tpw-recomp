@@ -129,7 +129,7 @@ rm -rf "$out/Vulkan-Headers-vulkan-sdk-1.4.350.0"
 sed -i 's|^prefix=.*|prefix=${pcfiledir}/../..|' "$u"/lib/pkgconfig/*.pc
 
 # The launcher.
-gcc -O2 -Wall -DTPW_VERSION="\"$version\"" "$repo/app/linux/launcher.c" -I"$u/include" -L"$u/lib" \
+gcc -O2 -Wall -DTPW_VERSION="\"$version\"" "$repo/app/sdl-launcher/launcher.c" "$repo/app/sdl-launcher/launcher_os_posix.c" -I"$u/include" -L"$u/lib" \
   -lSDL2_ttf -lSDL2 -Wl,-rpath,'$ORIGIN/../lib' -o "$u/bin/theme-park-world"
 
 echo "==> Python and its packages"

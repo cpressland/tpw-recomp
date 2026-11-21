@@ -72,7 +72,7 @@ endif()
 # The Vulkan renderer is compiled only if <vulkan/vulkan.h> is found.
 # We look for the headers first in the include directory of each
 # CMAKE_PREFIX_PATH entry (so for example a Vulkan-Headers checkout), and then
-# in the Vulkan SDK's include folder.
+# in the Vulkan SDK's include directory.
 # vulkan-1.dll is part of the graphics driver and loaded at runtime, so we don't
 # need to link anything for it.
 if(WIN32)
