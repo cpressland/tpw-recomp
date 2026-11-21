@@ -19,9 +19,14 @@
 #include <unistd.h>
 #include <limits.h>
 #include <pthread.h>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
 
 #include <SDL2/SDL.h>
 #include "win32hle.h"
+#include "hle_os.h"
 #include "pe_loader.h"
 #include "host.h"
 #include "recomp_target.h"
@@ -179,17 +184,42 @@ static void report(const char *why) {
     fprintf(stderr, "\n");
 }
 
-static void on_fault(int sig, siginfo_t *si, void *uc) {
+/* Writes the fault report & trace, then ends the process with exit code 3.
+ * Only the first fault is reported. A second fault, for instance on another
+ * thread or within the report itself, ends the process immediately. */
+static void fault_report(const char *why) {
     static volatile int once;
-    (void)uc;
     if (__sync_lock_test_and_set(&once, 1)) _exit(3);
-    char why[96];
-    snprintf(why, sizeof why, "fault: signal %d, address %p", sig, si->si_addr);
     report(why);
     recomp_dump_trace(why);
     fflush(stderr);
     _exit(3);
 }
+
+#ifdef _WIN32
+/* Windows faults are structured exceptions rather than signals.
+ * This handler runs for any exceptions not already handled elsewhere.
+ * The printed address is either the read/write address involved in an access
+ * violation/in-page error, or the faulting instruction for anything else, same
+ * as si_addr on Mac and Linux. */
+static LONG WINAPI on_fault(EXCEPTION_POINTERS *e) {
+    const EXCEPTION_RECORD *r = e->ExceptionRecord;
+    int has_data = (r->ExceptionCode == EXCEPTION_ACCESS_VIOLATION || r->ExceptionCode == EXCEPTION_IN_PAGE_ERROR)
+                   && r->NumberParameters >= 2;
+    void *addr = has_data ? (void *)r->ExceptionInformation[1] : r->ExceptionAddress;
+    char why[96];
+    snprintf(why, sizeof why, "fault: exception 0x%08X, address %p", (unsigned)r->ExceptionCode, addr);
+    fault_report(why);
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+#else
+static void on_fault(int sig, siginfo_t *si, void *uc) {
+    (void)uc;
+    char why[96];
+    snprintf(why, sizeof why, "fault: signal %d, address %p", sig, si->si_addr);
+    fault_report(why);
+}
+#endif
 
 static void *watchdog(void *arg) {
     (void)arg;
@@ -293,8 +323,16 @@ static uint32_t exe_stamp(const char *path) {
     return head[nt + 8] | head[nt + 9] << 8 | head[nt + 10] << 16 | (uint32_t)head[nt + 11] << 24;
 }
 
-/* The program's main (exe.c), and the app's way in (app/launcher.m). */
-__attribute__((visibility("default"))) int tpw_main(int argc, char **argv) {
+/* The program's main (exe.c), and the app's way in (app/launcher.m).
+ * Marked dllexport on Windows to prevent MinGW's linker from exporting every
+ * global symbol, which would put us at ~42,000/65,535 exported symbols, close
+ * to the DLL symbol export limit. */
+#ifdef _WIN32
+__declspec(dllexport)
+#else
+__attribute__((visibility("default")))
+#endif
+int tpw_main(int argc, char **argv) {
     const char *game = "game";
     int run = 0;
     setvbuf(stderr, NULL, _IONBF, 0);
@@ -315,8 +353,8 @@ __attribute__((visibility("default"))) int tpw_main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--shot") && i + 1 < argc) {
             static char path[PATH_MAX];          /* absolute: the run enters the game folder */
             const char *p = argv[++i];
-            if (p[0] == '/') snprintf(path, sizeof path, "%s", p);
-            else { char cwd[PATH_MAX]; snprintf(path, sizeof path, "%s/%s", getcwd(cwd, sizeof cwd) ? cwd : ".", p); }
+            if (hle_os_path_is_abs(p)) snprintf(path, sizeof path, "%s", p);
+            else { char cwd[PATH_MAX]; snprintf(path, sizeof path, "%s/%s", hle_os_getcwd(cwd, sizeof cwd) ? cwd : ".", p); }
             g_shot = path;
         }
         else if (!strcmp(argv[i], "--shot-after") && i + 1 < argc) g_shot_s = (unsigned)strtoul(argv[++i], NULL, 0);
@@ -327,21 +365,35 @@ __attribute__((visibility("default"))) int tpw_main(int argc, char **argv) {
             return !strcmp(argv[i], "--help") || !strcmp(argv[i], "-h") ? 0 : 1;
         }
     }
-    char game_full[PATH_MAX], exe_host[PATH_MAX + 16];
-    if (!realpath(game, game_full)) { fprintf(stderr, "no game folder at %s\n", game); return 1; }
+    char exe_host[PATH_MAX + 16];
+    /* !! free after chdir is done, and on every return prior to that. */
+    char *game_full = hle_os_realpath(game);
+    if (!game_full) { fprintf(stderr, "no game folder at %s\n", game); return 1; }
     hle_set_drive('C', game_full);
     hle_set_drive('D', game_full);       /* the disc, as a CD-ROM (shims.c) */
     if (!hle_host_path("C:\\" TPW_EXE_NAME, exe_host, sizeof exe_host)) {
         fprintf(stderr, "no " TPW_EXE_NAME " in %s\n", game_full);
+        free(game_full);
         return 1;
     }
     uint32_t stamp = exe_stamp(exe_host);
     if (stamp != TPW_EXE_STAMP) {
         fprintf(stderr, "%s is not the build this host was lifted from (PE timestamp 0x%08X, wanted 0x%08X).\n",
                 exe_host, stamp, TPW_EXE_STAMP);
+        free(game_full);
         return 1;
     }
 
+#ifdef _WIN32
+    {
+        /* Reserve enough stack space for fault reports.
+         * This is handled by sigaltstack on Mac and Linux, and like sigaltstack
+         * it only covers the main thread. */
+        ULONG guarantee = 1 << 16;
+        SetThreadStackGuarantee(&guarantee);
+        SetUnhandledExceptionFilter(on_fault);
+    }
+#else
     {   /* faults report on their own stack: a guest stack overflow is one */
         static uint8_t alt[1 << 16];
         stack_t ss = { .ss_sp = alt, .ss_size = sizeof alt };
@@ -355,6 +407,7 @@ __attribute__((visibility("default"))) int tpw_main(int argc, char **argv) {
         sigaction(SIGFPE, &sa, NULL);
         sigaction(SIGILL, &sa, NULL);
     }
+#endif
 
     win32hle_register(g_tpw_shims);    /* first: the game's own answers win */
     win32hle_register(tpw_won_shims);
@@ -367,6 +420,7 @@ __attribute__((visibility("default"))) int tpw_main(int argc, char **argv) {
     pe_image img;
     if (recomp_pe_map(exe_host, &img) != 0 || img.base != TPW_IMAGE_BASE) {
         fprintf(stderr, "cannot map %s at 0x%08X\n", exe_host, TPW_IMAGE_BASE);
+        free(game_full);
         return 1;
     }
     hle_module_add("C:\\" TPW_EXE_NAME, img.base, img.resource_rva, img.resource_size, 1);
@@ -378,17 +432,19 @@ __attribute__((visibility("default"))) int tpw_main(int argc, char **argv) {
 
     if (!run) {
         printf("\n(dry run: image mapped and bound; --run enters 0x%08X)\n", tpw_entry_va);
+        free(game_full);
         return 0;
     }
-    if (g_resolution && set_resolution(g_resolution) != 0) return 1;
+    if (g_resolution && set_resolution(g_resolution) != 0) { free(game_full); return 1; }
     read_resolution();
-    if (chdir(game_full) != 0) { fprintf(stderr, "cannot enter %s\n", game_full); return 1; }
+    if (chdir(game_full) != 0) { fprintf(stderr, "cannot enter %s\n", game_full); free(game_full); return 1; }
+    free(game_full);
     /* Full screen in its own Space, as a 1999 game ran: the game draws its own
      * cursor, and the mouse is held in the picture either way (Ctrl+Cmd lets go). */
     hle_screen_confine(!g_free_mouse);
     if (hle_screen_open(TPW_TITLE, !g_windowed, g_headless) != 0) return 1;
     if (!g_headless && !g_no_pad) pad_start();     /* a game controller as the mouse and keys (pad.c) */
-    /* Direct3D on the GPU (Metal, the default on a Mac; Vulkan, on Linux), or
+    /* Direct3D on the GPU (Metal, the default on a Mac; Vulkan, on Linux and Windows), or
      * in software (pcrecomp's d3d_raster.c), which each falls back to without
      * its GPU. */
     if (!strcmp(g_renderer, "metal")) {

@@ -48,6 +48,9 @@ if(TPW_SDL_FRAMEWORKS)
   find_library(TPW_SDL2_TTF SDL2_ttf PATHS ${TPW_SDL_FRAMEWORKS} NO_DEFAULT_PATH REQUIRED)
   target_link_libraries(tpw_sdl INTERFACE ${TPW_SDL2} ${TPW_SDL2_TTF})
 elseif(WIN32)
+  # Enable console for log output.
+  # SDL adds -mwindows by default, which disables the console subsystem.
+  set(SDL2_NO_MWINDOWS ON)
   find_package(SDL2 REQUIRED CONFIG)
   find_package(SDL2_ttf REQUIRED CONFIG)
   add_library(tpw_sdl INTERFACE)
@@ -125,3 +128,22 @@ endif()
 add_library(tpw_game SHARED)
 set_target_properties(tpw_game PROPERTIES OUTPUT_NAME tpw)
 target_link_libraries(tpw_game PRIVATE tpw_obj)
+if(WIN32)
+  # MinGW defaults to "libtpw.dll", set it to our "tpw.dll" instead.
+  set_target_properties(tpw_game PROPERTIES PREFIX "")
+
+  # Link winpthreads into tpw.exe & tpw.dll statically.
+  target_link_options(tpw PRIVATE -static)
+  target_link_options(tpw_game PRIVATE -static)
+
+  # Lifted code tends to produce deep call stacks, so give it 8 MB of stack, which
+  # we know is enough on Linux.
+  # This only affects tpw.exe; anything else that loads tpw.dll will need its
+  # own --stack flag like this.
+  target_link_options(tpw PRIVATE -Wl,--stack,8388608)
+
+  # Copy SDL & SDL_ttf next to the exe.
+  add_custom_command(TARGET tpw POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:SDL2::SDL2> $<TARGET_FILE:SDL2_ttf::SDL2_ttf>
+            $<TARGET_FILE_DIR:tpw>)
+endif()

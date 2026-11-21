@@ -317,7 +317,8 @@ Linux launcher (SDL, as the game is); `TPW_LAUNCHER_SHOT=FILE.bmp` with
 ## Building (Windows)
 
 > **Heavy WIP!**
-> Lift & compilation works, but that's it. No working build yet!
+> The lift, compile and link work, and `tpw.exe` maps the game, but it hasn't
+> run the game yet.
 
 The Windows build uses clang from [llvm-mingw](https://github.com/mstorsjo/llvm-mingw).
 MSVC and clang-cl are not currently supported.
@@ -361,16 +362,17 @@ place of `.venv/bin/python` and `python3`, and step 2's last line as:
 cp -r work/v20 game && cp work/unwrap/TP.EXE game/TP.EXE && rm game/TP.ICD
 ```
 
-Now configure & build with cmake. Replace the paths in `CMAKE_PREFIX_PATH` with your SDL2 and SDL2_ttf packages:
+Now build with `build-windows.ps1`. Set `TPW_SDL_PREFIX` to your SDL2 and SDL2_ttf package paths:
 
 ```
-cmake -S . -B build-windows -G Ninja @(
-    '-DCMAKE_C_COMPILER=clang'
-    '-DPCRECOMP=../pcrecomp'
-    '-DCMAKE_PREFIX_PATH=Z:/lib/SDL2-2.32.10/x86_64-w64-mingw32;Z:/lib/SDL2_ttf-2.24.0/x86_64-w64-mingw32'
-)
-cmake --build build-windows
+$env:TPW_SDL_PREFIX = 'Z:/lib/SDL2-2.32.10;Z:/lib/SDL2_ttf-2.24.0'
+.\build-windows.ps1
+build-windows\tpw.exe --game game --run
 ```
+
+This builds `build-windows\tpw.exe` and `tpw.dll`.
+
+Check the script's header to see its other settings such as `BUILD_DIR` and `PCRECOMP`.
 
 #### Automatic method
 
